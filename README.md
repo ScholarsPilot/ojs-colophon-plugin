@@ -108,9 +108,12 @@ callback → JATS galley + per-panel TIFF dependents in OJS. The pairing flow
 Twelve defects were found and fixed by these verifications — the reason
 they exist. Still open, honestly:
 
-- A person clicking the buttons in a real browser (the JS inserts into the
-  Vue DOM defensively; the payload and endpoints are verified, pixels are
-  not).
+- A person clicking the *workflow* buttons in a real browser (the JS
+  inserts into the Vue DOM defensively; the payload and endpoints are
+  verified, pixels are not). The settings modal has now been opened by a
+  person (2026-08-26) — which immediately found two defects the scripted
+  E2E could not: pairing URLs built through the component router (Handler
+  assert), and the 3.4-only CSRF accessor. Both fixed; the list works.
 - The firewall-blocked **Check status** path end-to-end.
 - Genres are resolved by registry key (`SUBMISSION`, `IMAGE`); a journal
   that deleted its defaults gets files with no genre — harmless but

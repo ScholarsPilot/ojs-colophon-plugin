@@ -22,14 +22,27 @@ class ColophonSettingsForm extends Form
     public function fetch($request, $template = null, $display = false)
     {
         $templateMgr = \APP\template\TemplateManager::getManager($request);
-        $router = $request->getRouter();
+        $dispatcher = $request->getDispatcher();
         $templateMgr->assign([
             'pluginName' => $this->plugin->getName(),
             // The device-flow pairing: one button, no key-copying. These are
-            // page-router ops on the colophon handler, journal context.
-            'colophonConnectStartUrl' => $router->url($request, null, 'colophon', 'connectStart'),
-            'colophonConnectPollUrl' => $router->url($request, null, 'colophon', 'connectPoll'),
-            'colophonCsrfToken' => $request->getSession()->getCSRFToken(),
+            // page-router ops on the colophon handler — built through the
+            // dispatcher with ROUTE_PAGE, because this form renders inside a
+            // *component* request (the plugins grid's settings modal) and the
+            // current request's router would read 'colophon' as a component
+            // name and die on its Handler-suffix assert. Found the first time
+            // a person actually opened the modal (2026-08-26).
+            'colophonConnectStartUrl' => $dispatcher->url(
+                $request, \PKP\core\PKPApplication::ROUTE_PAGE, null, 'colophon', 'connectStart',
+            ),
+            'colophonConnectPollUrl' => $dispatcher->url(
+                $request, \PKP\core\PKPApplication::ROUTE_PAGE, null, 'colophon', 'connectPoll',
+            ),
+            // 3.4's PKP session exposes getCSRFToken(); 3.5's Laravel
+            // session store exposes token(). Same value, different name.
+            'colophonCsrfToken' => method_exists($request->getSession(), 'token')
+                ? $request->getSession()->token()
+                : $request->getSession()->getCSRFToken(),
             'colophonJournalName' => (string) $this->plugin->getSetting(
                 $this->contextId, ColophonPlugin::SETTING_JOURNAL_NAME,
             ),
