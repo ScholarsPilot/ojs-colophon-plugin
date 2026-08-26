@@ -556,7 +556,7 @@ class ColophonHandler extends Handler
             return new JSONMessage(false, $e->getMessage());
         }
         if (in_array($job['status'] ?? '', ['completed', 'failed'], true)
-            && !$submission->getData('colophonGalleyId')) {
+            && (int) $submission->getData('colophonAppliedJobId') !== $jobId) {
             try {
                 $this->applyFinishedJob($submission, $jobId, $job);
             } catch (\Throwable $e) {
@@ -595,9 +595,18 @@ class ColophonHandler extends Handler
         // and PDF members as PRODUCTION_READY files (the editor's working
         // copies in the Production stage) and the whole package as a JATS
         // galley with dependent members (what publishes).
-        $this->addProductionReadyFiles($submission, $packageBytes);
+        // A re-produce (copy edits accepted, a figure replaced) delivers a NEW
+        // package for the same submission. Stacking another galley next to the
+        // old one showed readers "JATS XML" three times (found live: submission
+        // 32 held three after the copy-editing rerun), so the plugin replaces
+        // what it created before it adds. Only its own recorded ids are
+        // touched: a galley an editor made by hand is never deleted here.
+        $this->removePreviousDelivery($submission);
+        $productionFileIds = $this->addProductionReadyFiles($submission, $packageBytes);
         $galleyId = $this->createJatsGalley($submission, $packageBytes);
         $submission->setData('colophonGalleyId', $galleyId);
+        $submission->setData('colophonProductionFileIds', implode(',', $productionFileIds));
+        $submission->setData('colophonAppliedJobId', $jobId);
         $submission->setData('colophonLastResult', $job['result_message'] ?? 'completed');
         Repo::submission()->edit($submission, []);
     }
@@ -725,8 +734,9 @@ class ColophonHandler extends Handler
      * fileStage 11, the "ready for layout/publication" shelf editors work from.
      * Same storage recipe as the galley path below.
      */
-    private function addProductionReadyFiles($submission, string $packageBytes): void
+    private function addProductionReadyFiles($submission, string $packageBytes): array
     {
+        $created = [];
         $contextId = (int) $submission->getData('contextId');
         $publication = $submission->getCurrentPublication();
         $locale = $publication->getData('locale');
@@ -735,7 +745,7 @@ class ColophonHandler extends Handler
         $zip = new \ZipArchive();
         if ($zip->open($tmp) !== true) {
             @unlink($tmp);
-            return; // the galley path reports the unreadable-zip case
+            return $created; // the galley path reports the unreadable-zip case
         }
         $genreDao = DAORegistry::getDAO('GenreDAO');
         $xmlGenre = $genreDao->getByKey('SUBMISSION', $contextId);
@@ -763,10 +773,38 @@ class ColophonHandler extends Handler
                 'fileStage' => SubmissionFile::SUBMISSION_FILE_PRODUCTION_READY,
                 'genreId' => $xmlGenre?->getId(),
             ]);
-            Repo::submissionFile()->add($sf);
+            $created[] = (int) Repo::submissionFile()->add($sf);
         }
         $zip->close();
         @unlink($tmp);
+        return $created;
+    }
+
+    /**
+     * Delete the galley and production-ready files this plugin created on a
+     * previous delivery, by their recorded ids only. Repo::galley()->delete()
+     * removes the galley's own submission file (ASSOC_TYPE_GALLEY ==
+     * ASSOC_TYPE_REPRESENTATION) and Repo::submissionFile()->delete() cascades
+     * to its DEPENDENT members — both verified against pkp-lib 3.5 source.
+     * Ids that no longer resolve (an editor already removed them) are skipped.
+     */
+    private function removePreviousDelivery($submission): void
+    {
+        $publication = $submission->getCurrentPublication();
+        $oldGalleyId = (int) $submission->getData('colophonGalleyId');
+        if ($oldGalleyId) {
+            $galley = Repo::galley()->get($oldGalleyId, $publication->getId());
+            if ($galley) {
+                Repo::galley()->delete($galley);
+            }
+        }
+        $oldFileIds = array_filter(array_map('intval', explode(',', (string) $submission->getData('colophonProductionFileIds'))));
+        foreach ($oldFileIds as $fileId) {
+            $file = Repo::submissionFile()->get($fileId, $submission->getId());
+            if ($file) {
+                Repo::submissionFile()->delete($file);
+            }
+        }
     }
 
     private function manuscriptRevision($submission): int
@@ -788,7 +826,11 @@ class ColophonHandler extends Handler
     {
         $submission->setData('colophonJobId', (int) ($job['job_id'] ?? 0));
         $submission->setData('colophonStatusUrl', (string) ($job['status_url'] ?? ''));
-        $submission->setData('colophonGalleyId', null);
+        // The recorded galley id is NOT cleared here: removePreviousDelivery
+        // consumes it when the new package arrives. Clearing it on start —
+        // the old apply-once guard's companion — is what left every rerun
+        // stacking a fresh "JATS XML" galley next to the last one (the
+        // replace read 0 while the row sat deleted; traced live, runs E-H).
         Repo::submission()->edit($submission, []);
     }
 

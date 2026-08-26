@@ -89,6 +89,20 @@ class ColophonPlugin extends GenericPlugin
         $schema->properties->colophonLastResult = (object) [
             'type' => 'string', 'validation' => ['nullable'],
         ];
+        // Undeclared properties are STRIPPED by EntityDAO's schema sanitize on
+        // every save — setData succeeds in memory and the write silently never
+        // lands. colophonLastDelivery had been undeclared since the beginning,
+        // which means the webhook delivery dedupe never actually persisted;
+        // found while tracing why replace-on-redelivery read galleyId=0.
+        $schema->properties->colophonLastDelivery = (object) [
+            'type' => 'string', 'validation' => ['nullable'],
+        ];
+        $schema->properties->colophonAppliedJobId = (object) [
+            'type' => 'integer', 'validation' => ['nullable'],
+        ];
+        $schema->properties->colophonProductionFileIds = (object) [
+            'type' => 'string', 'validation' => ['nullable'],
+        ];
         return Hook::CONTINUE;
     }
 

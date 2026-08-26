@@ -94,6 +94,20 @@ references resolved unattended → package built and charged → signed
 callback → JATS galley + per-panel TIFF dependents in OJS. The pairing flow
 (Connect → confirm page → claim) ran end to end with zero copy-paste.
 
+**2026-08-26, second journal — redelivery replaces, never stacks.** A
+re-produce (copy edits applied on the Colophon side) delivers a new package
+for the same submission. The handler now deletes the galley and
+production-ready files it created on the previous delivery — by their
+recorded ids only, never an editor's own galley — before adding the new
+ones; verified live with consecutive redeliveries leaving exactly one
+galley. Two OJS facts this depends on, both verified against pkp-lib 3.5
+source: `Repo::galley()->delete()` cascades to the galley's files and their
+dependents, and **a submission setting persists only if the plugin declares
+it in the submission schema** — `EntityDAO` sanitizes undeclared properties
+away on every save, silently. `colophonLastDelivery` had been undeclared
+since the beginning, so webhook delivery dedupe never actually persisted;
+declared now, with `colophonAppliedJobId` and `colophonProductionFileIds`.
+
 **2026-08-19 — OJS 3.4.0-8 (official Docker image, MariaDB, CLI-installed).**
 1. `php -l` clean under PHP 8.3 for every file.
 2. Every OJS API this plugin touches verified against the `stable-3_4_0`
