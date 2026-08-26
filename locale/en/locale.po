@@ -68,3 +68,9 @@ msgstr "Enter your Colophon server address in the plugin settings, then press Co
 
 msgid "plugins.generic.colophon.settings.openPanel"
 msgstr "Open Colophon panel"
+
+msgid "plugins.generic.colophon.settings.creditsRemaining"
+msgstr "Credits remaining: {$n}"
+
+msgid "plugins.generic.colophon.settings.topUp"
+msgstr "Top up"

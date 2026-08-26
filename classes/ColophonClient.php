@@ -165,9 +165,21 @@ class ColophonClient
      * journal owner signed in on their Colophon panel. The key is the
      * authority; no secrets ride the response.
      */
-    public function panelLink(): array
+    public function panelLink(string $next = ''): array
     {
-        [$status, $body] = $this->request('POST', '/api/v1/panel-link', ['Content-Type: application/json'], '{}');
+        $payload = $next === '' ? '{}' : json_encode(['next' => $next]);
+        [$status, $body] = $this->request('POST', '/api/v1/panel-link', ['Content-Type: application/json'], $payload);
+        $data = json_decode($body, true) ?: [];
+        if ($status === 200) {
+            return $data;
+        }
+        throw new ColophonApiException($status, $data['code'] ?? 'error', $data['message'] ?? $body);
+    }
+
+    /** GET /api/v1/credits — the journal's balance, credits only. */
+    public function credits(): array
+    {
+        [$status, $body] = $this->request('GET', '/api/v1/credits', [], null);
         $data = json_decode($body, true) ?: [];
         if ($status === 200) {
             return $data;

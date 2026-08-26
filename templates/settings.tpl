@@ -16,6 +16,8 @@
 	<button type="button" class="pkp_button" id="colophonConnectBtn">{translate key="plugins.generic.colophon.settings.connect"}</button>
 	{if $apiKeySet}
 	<button type="button" class="pkp_button" id="colophonPanelBtn">{translate key="plugins.generic.colophon.settings.openPanel"}</button>
+	<span id="colophonCredits" style="margin-inline-start:0.75rem"></span>
+	<button type="button" class="pkp_button" id="colophonTopUpBtn" hidden>{translate key="plugins.generic.colophon.settings.topUp"}</button>
 	{/if}
 </div>
 <script>
@@ -77,6 +79,37 @@
 			else if (typeof resp.content === 'string') {ldelim} alert(resp.content); {rdelim}
 		{rdelim})
 		.catch(function () {ldelim} btn.disabled = false; {rdelim});
+	{rdelim});
+{rdelim})();
+{capture assign=colophonCreditsLabel}{translate key="plugins.generic.colophon.settings.creditsRemaining" n="COUNT"}{/capture}
+(function () {ldelim}
+	// The balance, in the block itself: how much is left, and one button to
+	// top up — it rides the same signed hand-off, landing on /credits/buy/.
+	var el = document.getElementById('colophonCredits');
+	var topUp = document.getElementById('colophonTopUpBtn');
+	if (!el || !topUp) return;
+	function post(url, extra) {ldelim}
+		var body = new URLSearchParams();
+		body.set('csrfToken', {$colophonCsrfToken|json_encode});
+		if (extra) Object.keys(extra).forEach(function (k) {ldelim} body.set(k, extra[k]); {rdelim});
+		return fetch(url, {ldelim} method: 'POST', credentials: 'same-origin',
+			headers: {ldelim} 'Content-Type': 'application/x-www-form-urlencoded' {rdelim},
+			body: body.toString() {rdelim}).then(function (r) {ldelim} return r.json(); {rdelim});
+	{rdelim}
+	post({$colophonCreditsOpUrl|json_encode}).then(function (resp) {ldelim}
+		var c = (resp && resp.content) || {ldelim}{rdelim};
+		if (typeof c.available === 'number') {ldelim}
+			el.textContent = {$colophonCreditsLabel|json_encode}.replace('COUNT', c.available);
+			topUp.hidden = false;
+		{rdelim}
+	{rdelim}).catch(function () {ldelim}{rdelim});
+	topUp.addEventListener('click', function () {ldelim}
+		topUp.disabled = true;
+		post({$colophonPanelOpUrl|json_encode}, {ldelim} next: '/credits/buy/' {rdelim}).then(function (resp) {ldelim}
+			topUp.disabled = false;
+			var c = (resp && resp.content) || {ldelim}{rdelim};
+			if (c.url) window.open(c.url, '_blank');
+		{rdelim}).catch(function () {ldelim} topUp.disabled = false; {rdelim});
 	{rdelim});
 {rdelim})();
 </script>

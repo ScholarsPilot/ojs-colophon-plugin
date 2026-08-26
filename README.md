@@ -32,7 +32,9 @@ Everything it does is visible in this repository.
    blank field keeps the stored value, and secrets are never echoed back.
 4. Once connected, **Open Colophon panel** in the same settings takes you
    into your journal's Colophon workspace signed in — the key vouches for
-   you, so no password ever needs to exist.
+   you, so no password ever needs to exist. The same block shows the
+   journal's **remaining credits** and a **Top up** button that lands,
+   signed in, on the credits shop.
 
 ## How it works
 

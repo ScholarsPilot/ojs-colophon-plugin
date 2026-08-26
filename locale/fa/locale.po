@@ -68,3 +68,9 @@ msgstr "نشانی سرور Colophon را در تنظیمات افزونه وا�
 
 msgid "plugins.generic.colophon.settings.openPanel"
 msgstr "بازکردن پنل Colophon"
+
+msgid "plugins.generic.colophon.settings.creditsRemaining"
+msgstr "شارژ باقی‌مانده: {$n}"
+
+msgid "plugins.generic.colophon.settings.topUp"
+msgstr "شارژ کنید"

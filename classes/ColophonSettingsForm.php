@@ -41,6 +41,9 @@ class ColophonSettingsForm extends Form
             'colophonPanelOpUrl' => $dispatcher->url(
                 $request, \PKP\core\PKPApplication::ROUTE_PAGE, null, 'colophon', 'panel',
             ),
+            'colophonCreditsOpUrl' => $dispatcher->url(
+                $request, \PKP\core\PKPApplication::ROUTE_PAGE, null, 'colophon', 'credits',
+            ),
             // 3.4's PKP session exposes getCSRFToken(); 3.5's Laravel
             // session store exposes token(). Same value, different name.
             'colophonCsrfToken' => method_exists($request->getSession(), 'token')

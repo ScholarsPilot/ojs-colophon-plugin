@@ -49,7 +49,7 @@ class ColophonHandler extends Handler
         );
         $this->addRoleAssignment(
             [Role::ROLE_ID_MANAGER, Role::ROLE_ID_SITE_ADMIN],
-            ['connectStart', 'connectPoll', 'panel']
+            ['connectStart', 'connectPoll', 'panel', 'credits']
         );
     }
 
@@ -60,7 +60,7 @@ class ColophonHandler extends Handler
         if ($op === 'callback') {
             return true; // authenticated by signature inside the op itself
         }
-        if (in_array($op, ['connectStart', 'connectPoll', 'panel'], true)) {
+        if (in_array($op, ['connectStart', 'connectPoll', 'panel', 'credits'], true)) {
             // Journal-level, no submission to authorize against: the canonical
             // context policy bundles the role-based op check with the context.
             $this->addPolicy(new \PKP\security\authorization\ContextAccessPolicy($request, $roleAssignments));
@@ -170,12 +170,42 @@ class ColophonHandler extends Handler
             return new JSONMessage(false, __('plugins.generic.colophon.error.notConfigured'));
         }
         $client = new ColophonClient($apiBase, $apiKey);
+        // Optional hand-off target inside the panel — the Top up button
+        // sends /credits/buy/. Colophon validates it as a local path too.
+        $next = (string) $request->getUserVar('next');
         try {
-            $link = $client->panelLink();
+            $link = $client->panelLink($next);
         } catch (ColophonApiException $e) {
             return new JSONMessage(false, __('plugins.generic.colophon.error.api', ['message' => $e->getMessage()]));
         }
         return new JSONMessage(true, ['url' => (string) ($link['url'] ?? '')]);
+    }
+
+    /**
+     * POST: the journal's credit balance, for the settings block. Credits
+     * only — prices ride along so the block can say what a service costs.
+     */
+    public function credits(array $args, $request): JSONMessage
+    {
+        if (!$request->checkCSRF()) {
+            return new JSONMessage(false, __('form.csrfInvalid'));
+        }
+        $contextId = $request->getContext()->getId();
+        $apiKey = $this->plugin->getApiKey($contextId);
+        $apiBase = $this->plugin->getApiBase($contextId);
+        if ($apiKey === '' || $apiBase === '') {
+            return new JSONMessage(false, __('plugins.generic.colophon.error.notConfigured'));
+        }
+        $client = new ColophonClient($apiBase, $apiKey);
+        try {
+            $credits = $client->credits();
+        } catch (ColophonApiException $e) {
+            return new JSONMessage(false, __('plugins.generic.colophon.error.api', ['message' => $e->getMessage()]));
+        }
+        return new JSONMessage(true, [
+            'available' => (int) ($credits['available'] ?? 0),
+            'prices' => $credits['prices'] ?? [],
+        ]);
     }
 
     // ----- send (one-call intake from the Copyediting stage) ----------------
