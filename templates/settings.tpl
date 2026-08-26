@@ -14,6 +14,9 @@
 		<p id="colophonConnectState">{translate key="plugins.generic.colophon.settings.notConnected"}</p>
 	{/if}
 	<button type="button" class="pkp_button" id="colophonConnectBtn">{translate key="plugins.generic.colophon.settings.connect"}</button>
+	{if $apiKeySet}
+	<button type="button" class="pkp_button" id="colophonPanelBtn">{translate key="plugins.generic.colophon.settings.openPanel"}</button>
+	{/if}
 </div>
 <script>
 (function () {ldelim}
@@ -51,6 +54,29 @@
 				{rdelim});
 			{rdelim}, 3000);
 		{rdelim}).catch(function () {ldelim} stateEl.textContent = 'error'; btn.disabled = false; {rdelim});
+	{rdelim});
+{rdelim})();
+(function () {ldelim}
+	// The door back into the panel: Colophon mints a short-lived signed
+	// link over the authenticated API and the browser lands signed in as
+	// the journal owner — no password was ever created to type.
+	var btn = document.getElementById('colophonPanelBtn');
+	if (!btn) return;
+	btn.addEventListener('click', function () {ldelim}
+		btn.disabled = true;
+		var body = new URLSearchParams();
+		body.set('csrfToken', {$colophonCsrfToken|json_encode});
+		fetch({$colophonPanelOpUrl|json_encode}, {ldelim} method: 'POST', credentials: 'same-origin',
+			headers: {ldelim} 'Content-Type': 'application/x-www-form-urlencoded' {rdelim},
+			body: body.toString() {rdelim})
+		.then(function (r) {ldelim} return r.json(); {rdelim})
+		.then(function (resp) {ldelim}
+			btn.disabled = false;
+			var c = (resp && resp.content) || {ldelim}{rdelim};
+			if (c.url) {ldelim} window.open(c.url, '_blank'); {rdelim}
+			else if (typeof resp.content === 'string') {ldelim} alert(resp.content); {rdelim}
+		{rdelim})
+		.catch(function () {ldelim} btn.disabled = false; {rdelim});
 	{rdelim});
 {rdelim})();
 </script>

@@ -65,3 +65,6 @@ msgstr "متصل به {$name}"
 
 msgid "plugins.generic.colophon.error.noApiBase"
 msgstr "نشانی سرور Colophon را در تنظیمات افزونه وارد کنید، سپس اتصال را بزنید."
+
+msgid "plugins.generic.colophon.settings.openPanel"
+msgstr "بازکردن پنل Colophon"

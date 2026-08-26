@@ -65,3 +65,6 @@ msgstr "Connected as {$name}"
 
 msgid "plugins.generic.colophon.error.noApiBase"
 msgstr "Enter your Colophon server address in the plugin settings, then press Connect."
+
+msgid "plugins.generic.colophon.settings.openPanel"
+msgstr "Open Colophon panel"

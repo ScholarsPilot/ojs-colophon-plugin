@@ -160,6 +160,21 @@ class ColophonClient
     }
 
     /** @return array{0:int,1:string} [status, body] — multipart POST (CURLFile-aware). */
+    /**
+     * POST /api/v1/panel-link — a short-lived signed URL that lands the
+     * journal owner signed in on their Colophon panel. The key is the
+     * authority; no secrets ride the response.
+     */
+    public function panelLink(): array
+    {
+        [$status, $body] = $this->request('POST', '/api/v1/panel-link', ['Content-Type: application/json'], '{}');
+        $data = json_decode($body, true) ?: [];
+        if ($status === 200) {
+            return $data;
+        }
+        throw new ColophonApiException($status, $data['code'] ?? 'error', $data['message'] ?? $body);
+    }
+
     private function requestMultipart(string $path, array $post, array $headers): array
     {
         $url = $this->base . $path;

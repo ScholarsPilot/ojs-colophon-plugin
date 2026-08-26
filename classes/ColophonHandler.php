@@ -49,7 +49,7 @@ class ColophonHandler extends Handler
         );
         $this->addRoleAssignment(
             [Role::ROLE_ID_MANAGER, Role::ROLE_ID_SITE_ADMIN],
-            ['connectStart', 'connectPoll']
+            ['connectStart', 'connectPoll', 'panel']
         );
     }
 
@@ -60,7 +60,7 @@ class ColophonHandler extends Handler
         if ($op === 'callback') {
             return true; // authenticated by signature inside the op itself
         }
-        if (in_array($op, ['connectStart', 'connectPoll'], true)) {
+        if (in_array($op, ['connectStart', 'connectPoll', 'panel'], true)) {
             // Journal-level, no submission to authorize against: the canonical
             // context policy bundles the role-based op check with the context.
             $this->addPolicy(new \PKP\security\authorization\ContextAccessPolicy($request, $roleAssignments));
@@ -149,6 +149,33 @@ class ColophonHandler extends Handler
             'journalName' => $claim['journal_name'] ?? '',
             'credits' => $claim['credits'] ?? 0,
         ]);
+    }
+
+    /**
+     * POST: ask Colophon for a signed panel link and hand it to the browser.
+     * The journal's API key vouches for the manager holding this page — the
+     * same trust pairing established — so the owner lands signed in without
+     * a password that pairing deliberately never created.
+     */
+    public function panel(array $args, $request): JSONMessage
+    {
+        if (!$request->checkCSRF()) {
+            return new JSONMessage(false, __('form.csrfInvalid'));
+        }
+        $context = $request->getContext();
+        $contextId = $context->getId();
+        $apiKey = $this->plugin->getApiKey($contextId);
+        $apiBase = $this->plugin->getApiBase($contextId);
+        if ($apiKey === '' || $apiBase === '') {
+            return new JSONMessage(false, __('plugins.generic.colophon.error.notConfigured'));
+        }
+        $client = new ColophonClient($apiBase, $apiKey);
+        try {
+            $link = $client->panelLink();
+        } catch (ColophonApiException $e) {
+            return new JSONMessage(false, __('plugins.generic.colophon.error.api', ['message' => $e->getMessage()]));
+        }
+        return new JSONMessage(true, ['url' => (string) ($link['url'] ?? '')]);
     }
 
     // ----- send (one-call intake from the Copyediting stage) ----------------

@@ -30,6 +30,9 @@ Everything it does is visible in this repository.
 3. Alternatively, paste an API key and webhook signing secret minted on
    Colophon's API-keys page (both shown once). The form is write-only: a
    blank field keeps the stored value, and secrets are never echoed back.
+4. Once connected, **Open Colophon panel** in the same settings takes you
+   into your journal's Colophon workspace signed in — the key vouches for
+   you, so no password ever needs to exist.
 
 ## How it works
 

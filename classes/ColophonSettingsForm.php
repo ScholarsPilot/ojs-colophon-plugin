@@ -38,6 +38,9 @@ class ColophonSettingsForm extends Form
             'colophonConnectPollUrl' => $dispatcher->url(
                 $request, \PKP\core\PKPApplication::ROUTE_PAGE, null, 'colophon', 'connectPoll',
             ),
+            'colophonPanelOpUrl' => $dispatcher->url(
+                $request, \PKP\core\PKPApplication::ROUTE_PAGE, null, 'colophon', 'panel',
+            ),
             // 3.4's PKP session exposes getCSRFToken(); 3.5's Laravel
             // session store exposes token(). Same value, different name.
             'colophonCsrfToken' => method_exists($request->getSession(), 'token')
