@@ -1,0 +1,67 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: fa\n"
+
+msgid "plugins.generic.colophon.displayName"
+msgstr "کولوفون"
+
+msgid "plugins.generic.colophon.description"
+msgstr "با کولوفون برای این مقاله بستهٔ آمادهٔ سپردن JATS/PMC بسازید و به‌عنوان نسخهٔ انتشار پیوست کنید. عامل هوشمند پیش می‌برد؛ انسان تصمیم می‌گیرد."
+
+msgid "plugins.generic.colophon.action.generate"
+msgstr "ساخت JATS با کولوفون"
+
+msgid "plugins.generic.colophon.action.checkStatus"
+msgstr "بررسی وضعیت"
+
+msgid "plugins.generic.colophon.started"
+msgstr "کولوفون در حال ساخت بسته است. با پایان کار، نسخهٔ انتشار همین‌جا دیده می‌شود؛ اگر سرورتان وب‌هوک نمی‌گیرد از «بررسی وضعیت» استفاده کنید."
+
+msgid "plugins.generic.colophon.error.noSubmission"
+msgstr "مقاله‌ای در دسترس نیست."
+
+msgid "plugins.generic.colophon.error.notConfigured"
+msgstr "کولوفون برای این مجله پیکربندی نشده است. کلید API را در تنظیمات افزونه وارد کنید."
+
+msgid "plugins.generic.colophon.error.noArticleCode"
+msgstr "این مقاله هنوز به مقاله‌ای در کولوفون پیوند نخورده است. اول مقاله را در کولوفون بسازید و کد آن را روی مقاله ذخیره کنید."
+
+msgid "plugins.generic.colophon.error.api"
+msgstr "کولوفون درخواست را نپذیرفت: {$message}"
+
+msgid "plugins.generic.colophon.settings.apiBase"
+msgstr "نشانی پایهٔ API (برای محیط اصلی پیش‌فرض را نگه دارید)"
+
+msgid "plugins.generic.colophon.settings.apiBaseInvalid"
+msgstr "نشانی پایهٔ API باید یک URL معتبر باشد."
+
+msgid "plugins.generic.colophon.settings.apiKey"
+msgstr "کلید API (از صفحهٔ کلیدهای API کولوفون؛ فقط یک بار نمایش داده می‌شود)"
+
+msgid "plugins.generic.colophon.settings.webhookSecret"
+msgstr "رمز امضای وب‌هوک (هنگام ساخت کلید کنار آن نمایش داده می‌شود)"
+
+msgid "plugins.generic.colophon.settings.secretStored"
+msgstr "مقداری ذخیره شده است. برای نگه داشتن خالی بگذارید؛ برای جایگزینی مقدار تازه وارد کنید."
+
+msgid "plugins.generic.colophon.action.send"
+msgstr "ارسال به کلافن"
+
+msgid "plugins.generic.colophon.sent"
+msgstr "به کلافن ارسال شد — ویرایش، مراجع و صفحه‌آرایی آن‌جا انجام می‌شود و فایل‌ها پس از آماده شدن بسته به همین‌جا برمی‌گردند."
+
+msgid "plugins.generic.colophon.error.noManuscript"
+msgstr "فایل دست‌نوشته‌ای روی این مقاله پیدا نشد (نسخهٔ نهایی و سپس فایل اولیه جست‌وجو شد)."
+
+msgid "plugins.generic.colophon.settings.connect"
+msgstr "اتصال به کلافن"
+
+msgid "plugins.generic.colophon.settings.notConnected"
+msgstr "متصل نیست. روی اتصال بزنید: زبانهٔ کلافن برای تأیید باز می‌شود و کلید خودش به این‌جا می‌آید — چیزی برای کپی کردن نیست."
+
+msgid "plugins.generic.colophon.settings.connectedAs"
+msgstr "متصل به {$name}"
+
+msgid "plugins.generic.colophon.error.noApiBase"
+msgstr "نشانی سرور Colophon را در تنظیمات افزونه وارد کنید، سپس اتصال را بزنید."

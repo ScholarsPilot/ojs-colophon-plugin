@@ -1,0 +1,35 @@
+<!--
+  Draft entry for the PKP plugin gallery (https://github.com/pkp/plugin-gallery).
+  Not submitted yet. When submitting: tag a release, attach the tar.gz built by
+  tools/make-release.sh, fill in date + md5, and open a PR adding this <plugin>
+  block to plugins.xml. The package URL must never change after merge.
+-->
+<plugin category="generic" product="colophon">
+	<name locale="en_US">Colophon</name>
+	<homepage>https://github.com/ScholarsPilot/ojs-colophon-plugin</homepage>
+	<summary locale="en_US">One-click JATS/PMC production: send an accepted submission to a Colophon server and receive the finished, deposit-ready package back as a galley.</summary>
+	<description locale="en_US"><![CDATA[
+		Sends the accepted manuscript together with the metadata OJS already
+		holds (author emails, corresponding author, DOI, pages, received and
+		accepted dates) to a Colophon server, where references are resolved
+		and verified, figures become production TIFFs, and the XML is checked
+		against PMC's style rules. The finished package returns automatically
+		over a signed webhook (or by polling) and lands as a JATS galley with
+		dependent files. Pairing is zero-copy: press Connect, confirm in the
+		browser, and the plugin picks up its credentials — no keys pasted by
+		hand.
+	]]></description>
+	<maintainer>
+		<name>Vahhab Piranfar</name>
+		<institution>ScholarsPilot</institution>
+		<email>vahab.p@gmail.com</email>
+	</maintainer>
+	<release date="YYYY-MM-DD" version="2.0.0.0" md5="FILL-AFTER-PACKAGING">
+		<package>https://github.com/ScholarsPilot/ojs-colophon-plugin/releases/download/v2.0.0.0/colophon-2.0.0.0.tar.gz</package>
+		<compatibility application="ojs2">
+			<version>3.4.0.0</version>
+			<version>3.5.0.0</version>
+		</compatibility>
+		<description>First public release: one-call send with JATS front enrichment, device-flow pairing, signed webhook delivery, JATS galley with dependent files.</description>
+	</release>
+</plugin>

@@ -1,0 +1,67 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: en\n"
+
+msgid "plugins.generic.colophon.displayName"
+msgstr "Colophon"
+
+msgid "plugins.generic.colophon.description"
+msgstr "Generate a deposit-ready JATS/PMC package for a submission with Colophon, and attach it as a galley. An agent drives the run; a person decides."
+
+msgid "plugins.generic.colophon.action.generate"
+msgstr "Generate JATS with Colophon"
+
+msgid "plugins.generic.colophon.action.checkStatus"
+msgstr "Check status"
+
+msgid "plugins.generic.colophon.started"
+msgstr "Colophon is producing the package. You will see the galley here when it finishes; use Check status if your server cannot receive webhooks."
+
+msgid "plugins.generic.colophon.error.noSubmission"
+msgstr "No submission in context."
+
+msgid "plugins.generic.colophon.error.notConfigured"
+msgstr "Colophon is not configured for this journal. Enter the API key in the plugin settings."
+
+msgid "plugins.generic.colophon.error.noArticleCode"
+msgstr "This submission is not linked to a Colophon article yet. Create the article on Colophon first, then store its code on the submission."
+
+msgid "plugins.generic.colophon.error.api"
+msgstr "Colophon refused the request: {$message}"
+
+msgid "plugins.generic.colophon.settings.apiBase"
+msgstr "API base URL (leave default for production)"
+
+msgid "plugins.generic.colophon.settings.apiBaseInvalid"
+msgstr "The API base must be a valid URL."
+
+msgid "plugins.generic.colophon.settings.apiKey"
+msgstr "API key (from Colophon's API keys page; shown once there)"
+
+msgid "plugins.generic.colophon.settings.webhookSecret"
+msgstr "Webhook signing secret (shown beside the API key at creation)"
+
+msgid "plugins.generic.colophon.settings.secretStored"
+msgstr "A value is stored. Leave blank to keep it; enter a new one to replace it."
+
+msgid "plugins.generic.colophon.action.send"
+msgstr "Send to Colophon"
+
+msgid "plugins.generic.colophon.sent"
+msgstr "Sent to Colophon — editing, references and typesetting run there. Files return here when the package is ready."
+
+msgid "plugins.generic.colophon.error.noManuscript"
+msgstr "No manuscript file found on this submission (looked for the final draft, then the original upload)."
+
+msgid "plugins.generic.colophon.settings.connect"
+msgstr "Connect to Colophon"
+
+msgid "plugins.generic.colophon.settings.notConnected"
+msgstr "Not connected. Press Connect: a Colophon tab opens to confirm, and the key arrives here by itself — nothing to copy."
+
+msgid "plugins.generic.colophon.settings.connectedAs"
+msgstr "Connected as {$name}"
+
+msgid "plugins.generic.colophon.error.noApiBase"
+msgstr "Enter your Colophon server address in the plugin settings, then press Connect."
