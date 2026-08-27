@@ -76,6 +76,13 @@ class ColophonFrontXml
         if (!empty($meta['doi'])) {
             $articleMeta .= '<article-id pub-id-type="doi">' . $x($meta['doi']) . '</article-id>';
         }
+        // The editor's section, as a heading category. JATS puts
+        // article-categories before title-group; the platform reads the raw
+        // label and maps it to a type at IMPORT trust, above its own heuristic.
+        if (!empty($meta['section'])) {
+            $articleMeta .= '<article-categories><subj-group subj-group-type="heading">'
+                . '<subject>' . $x($meta['section']) . '</subject></subj-group></article-categories>';
+        }
         $articleMeta .= '<title-group><article-title>' . $x($meta['article_title'] ?? '') . '</article-title></title-group>';
         if ($contribs !== '') {
             $articleMeta .= '<contrib-group>' . $contribs . '</contrib-group>';
@@ -109,6 +116,31 @@ class ColophonFrontXml
         }
         if ($history !== '') {
             $articleMeta .= '<history>' . $history . '</history>';
+        }
+        // Copyright and licence, as the journal system holds them. JATS wants
+        // <permissions> after <history>. Emitted only when there is something
+        // to carry, so a journal that leaves these blank sends no empty block.
+        $holder = trim((string) ($meta['copyright_holder'] ?? ''));
+        $year = trim((string) ($meta['copyright_year'] ?? ''));
+        $licenseUrl = trim((string) ($meta['license_url'] ?? ''));
+        if ($holder !== '' || $year !== '' || $licenseUrl !== '') {
+            $permissions = '<permissions>';
+            if ($year !== '' || $holder !== '') {
+                $statement = trim('© ' . $year . ' ' . $holder);
+                $permissions .= '<copyright-statement>' . $x($statement) . '</copyright-statement>';
+            }
+            if ($year !== '') {
+                $permissions .= '<copyright-year>' . $x($year) . '</copyright-year>';
+            }
+            if ($holder !== '') {
+                $permissions .= '<copyright-holder>' . $x($holder) . '</copyright-holder>';
+            }
+            if ($licenseUrl !== '') {
+                $permissions .= '<license xlink:href="' . $x($licenseUrl) . '">'
+                    . '<license-p>' . $x($licenseUrl) . '</license-p></license>';
+            }
+            $permissions .= '</permissions>';
+            $articleMeta .= $permissions;
         }
         $articleMeta .= '</article-meta>';
 

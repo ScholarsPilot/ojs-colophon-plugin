@@ -382,6 +382,15 @@ class ColophonHandler extends Handler
             // read must not stop the send.
         }
 
+        // Copyright and licence are the journal system's own — in a real
+        // journal the editor set them, so they are authoritative for the
+        // deposit. copyrightHolder is localised; year and URL are scalar.
+        $copyrightHolder = method_exists($publication, 'getLocalizedData')
+            ? (string) ($publication->getLocalizedData('copyrightHolder') ?? '')
+            : '';
+        $copyrightYear = (string) ($publication->getData('copyrightYear') ?? '');
+        $licenseUrl = (string) ($publication->getData('licenseUrl') ?? '');
+
         return [
             'journal_title' => (string) $context->getLocalizedName(),
             'issn_print' => (string) $context->getData('printIssn'),
@@ -396,25 +405,15 @@ class ColophonHandler extends Handler
             'date_received' => $received,
             'date_accepted' => $accepted,
             'authors' => $authors,
-            'article_type' => $this->mapSectionToArticleType($sectionTitle),
+            // The raw section heading, not a code: the platform's own label map
+            // is richer than anything worth duplicating here (it knows "Short
+            // Communication" is a brief report, which a four-line map here did
+            // not), so the authoritative mapping lives in exactly one place.
+            'section' => $sectionTitle,
+            'copyright_holder' => $copyrightHolder,
+            'copyright_year' => $copyrightYear,
+            'license_url' => $licenseUrl,
         ];
-    }
-
-    /** Crude but honest mapping from an OJS section name to a JATS article type. */
-    private function mapSectionToArticleType(string $sectionTitle): string
-    {
-        $lower = mb_strtolower($sectionTitle);
-        foreach ([
-            'review' => 'review-article',
-            'case' => 'case-report',
-            'editorial' => 'editorial',
-            'letter' => 'letter-to-the-editor',
-        ] as $needle => $code) {
-            if ($lower !== '' && str_contains($lower, $needle)) {
-                return $code;
-            }
-        }
-        return 'research-article';
     }
 
     // ----- start ------------------------------------------------------------
