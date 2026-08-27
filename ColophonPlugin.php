@@ -128,34 +128,77 @@ class ColophonPlugin extends GenericPlugin
      * Add "Generate JATS with Colophon" to the production stage. Rendered as
      * a LinkAction so it sits beside the native galley controls rather than
      * replacing or reordering them.
+     *
+     * Two shapes, verified live against real 3.4.0-8 and 3.5.0-5 instances:
+     *
+     * - 3.4 renders workflow/workflow.tpl once per submission, as a real page
+     *   load, with 'submission' already assigned — a one-shot payload with a
+     *   baked-in id is correct and is untouched below.
+     * - 3.5 replaced that page with dashboard/editors.tpl: PKPWorkflowHandler
+     *   no longer renders anything (it redirects to
+     *   dashboard/editorial?workflowSubmissionId={id}), and editors.tpl is a
+     *   submission-agnostic list with no 'submission' var. Opening or
+     *   switching submissions from there is pure client-side routing — a GET
+     *   to /api/v1/submissions/{id}, no further TemplateManager::display —
+     *   so a baked-in id would go stale the moment the editor clicked a
+     *   different row. This branch ships URL *templates*
+     *   (a __SUBMISSION_ID__ placeholder) instead; colophon.js watches the
+     *   route and substitutes the id itself.
      */
     public function injectProductionAction(string $hookName, array $args): bool
     {
         $templateMgr = $args[0];
         $template = $args[1];
-        if ($template !== 'workflow/workflow.tpl') {
+        $isWorkflowTemplate = $template === 'workflow/workflow.tpl';
+        $isDashboardTemplate = $template === 'dashboard/editors.tpl';
+        if (!$isWorkflowTemplate && !$isDashboardTemplate) {
             return false;
         }
         $request = Application::get()->getRequest();
-        // PKPWorkflowHandler assigns 'submission' before displaying
-        // workflow/workflow.tpl (verified in stable-3_4_0).
-        $submission = $templateMgr->getTemplateVars('submission');
-        if (!$submission) {
-            return false;
-        }
         $router = $request->getRouter();
-        // The 3.4 workflow page is a Vue app: a template var is rendered by
-        // nothing a plugin controls. colophon.js inserts the button into the
-        // workflow header instead, from the bootstrap payload below.
-        $payload = json_encode([
-            'submissionId' => $submission->getId(),
-            'hasArticleCode' => (string) $submission->getData('colophonArticleCode') !== '',
-            'sendUrl' => $router->url($request, null, 'colophon', 'send', null,
-                ['submissionId' => $submission->getId()]),
-            'startUrl' => $router->url($request, null, 'colophon', 'start', null,
-                ['submissionId' => $submission->getId()]),
-            'statusUrl' => $router->url($request, null, 'colophon', 'status', null,
-                ['submissionId' => $submission->getId()]),
+
+        if ($isWorkflowTemplate) {
+            // PKPWorkflowHandler assigns 'submission' before displaying
+            // workflow/workflow.tpl (verified in stable-3_4_0).
+            $submission = $templateMgr->getTemplateVars('submission');
+            if (!$submission) {
+                return false;
+            }
+            $payload = [
+                'submissionId' => $submission->getId(),
+                'hasArticleCode' => (string) $submission->getData('colophonArticleCode') !== '',
+                'sendUrl' => $router->url($request, null, 'colophon', 'send', null,
+                    ['submissionId' => $submission->getId()]),
+                'startUrl' => $router->url($request, null, 'colophon', 'start', null,
+                    ['submissionId' => $submission->getId()]),
+                'statusUrl' => $router->url($request, null, 'colophon', 'status', null,
+                    ['submissionId' => $submission->getId()]),
+            ];
+        } else {
+            $context = $request->getContext();
+            if (!$context) {
+                return false;
+            }
+            // hasArticleCode is deliberately absent here: it is per-submission
+            // state that can change while the editor stays on this one page,
+            // so colophon.js reads it fresh per submission instead — off the
+            // same REST endpoint the dashboard SPA already calls
+            // (/api/v1/submissions/{id}), whose JSON already carries
+            // colophonArticleCode because addToSubmissionSchema() declares it
+            // on the schema the API serializer reads (verified live).
+            $payload = [
+                'submissionId' => null,
+                'apiBase' => $request->getBaseUrl() . '/' . $context->getPath() . '/api/v1',
+                'sendUrl' => $router->url($request, null, 'colophon', 'send', null,
+                    ['submissionId' => '__SUBMISSION_ID__']),
+                'startUrl' => $router->url($request, null, 'colophon', 'start', null,
+                    ['submissionId' => '__SUBMISSION_ID__']),
+                'statusUrl' => $router->url($request, null, 'colophon', 'status', null,
+                    ['submissionId' => '__SUBMISSION_ID__']),
+            ];
+        }
+
+        $payload += [
             // 3.4's PKP session exposes getCSRFToken(); 3.5's is a Laravel
             // Illuminate\Session\Store, which has token() and throws
             // BadMethodCallException for the old name. The settings form was
@@ -170,10 +213,10 @@ class ColophonPlugin extends GenericPlugin
                 'generate' => __('plugins.generic.colophon.action.generate'),
                 'checkStatus' => __('plugins.generic.colophon.action.checkStatus'),
             ],
-        ]);
+        ];
         $templateMgr->addJavaScript(
             'colophonData',
-            'window.colophonData = ' . $payload . ';',
+            'window.colophonData = ' . json_encode($payload) . ';',
             ['contexts' => 'backend', 'inline' => true]
         );
         $templateMgr->addJavaScript(

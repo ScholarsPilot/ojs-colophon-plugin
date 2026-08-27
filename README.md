@@ -85,6 +85,58 @@ verifier samples at `/api/v1/reference`.
 
 ## Verification record
 
+**2026-08-27 — the OJS 3.5 workflow button, fixed and verified live.** Found
+2026-08-27 by asking where an editor actually clicks: `injectProductionAction`
+hooked `TemplateManager::display` and returned early unless the template was
+`workflow/workflow.tpl` — a template that does not exist in 3.5, where the
+workflow page became part of the dashboard SPA. The endpoints themselves were
+always fine (the whole 2026-08-26 campaign above drove `send`/`start`/
+`callback` and produced galleys), but only through POSTs, never through a
+button a person pressed. Now closed. What actually changes on 3.5, learned by
+driving a live 3.5.0-5 instance rather than reading the SPA's source in
+isolation:
+
+- Opening or switching submissions from `dashboard/editorial` is **pure
+  client-side routing** — a `GET /api/v1/submissions/{id}`, confirmed on the
+  wire — not a page load. `TemplateManager::display` fires exactly once, for
+  the dashboard shell itself; a payload with a baked-in submission id would
+  have gone stale the moment an editor clicked a second row. The hook now
+  emits URL *templates* (a `__SUBMISSION_ID__` placeholder) instead, and
+  `colophon.js` substitutes the id it reads from the live URL.
+- `colophonArticleCode` (and the plugin's other schema-declared submission
+  properties) already ride along in that same `/api/v1/submissions/{id}`
+  JSON, because `addToSubmissionSchema` puts them on the schema the REST
+  serializer reads — confirmed by inspecting a live response. No new PHP
+  endpoint was needed for the client to know whether a submission has
+  already been sent.
+- The stable insertion point is `[data-cy="sidemodal-header"]` — a Cypress
+  test hook, not the Tailwind utility classes wrapping it, which carry no
+  semantic meaning and are not something a plugin should anchor to. It
+  persists across the Submission/Review/Copyediting/Production sub-tabs of
+  one open submission; the per-stage `[data-cy="workflow-action-items"]`
+  panel does not (it is absent whenever the current sub-tab has no primary
+  action), which is why the button targets the header, not that panel.
+- Two real bugs surfaced only by clicking, not by reading the diff: this
+  script runs in `<head>`, before the parser reaches `<body>` —
+  `document.body` is `null` at that point, and `MutationObserver.observe`
+  throws (not returns null) on a null target, which silently aborted every
+  listener after it, including the initial render. And a long result
+  message ("Colophon is producing the package...") is a full sentence, not
+  a button label — in the SPA's narrow slide-in panel (384px), an unbounded
+  row pushed the submission title down to a one-word column before the
+  injected element was given a max-width and allowed to wrap.
+- Verified on both target versions after the fix, not just 3.5: a submission
+  switch (18 → 27) re-fetches and re-renders with no duplicate and no stale
+  URL; all four stage sub-tabs preserve exactly one button instance; a
+  bookmarked/reloaded `?workflowSubmissionId=` URL renders correctly on a
+  fresh load; the Generate and Check status clicks round-trip through the
+  real handler on both a 3.5.0-5 and a 3.4.0-8 instance with zero console
+  errors beyond the target site's own pre-existing, unrelated
+  `pkp.context.timeZone` warning. The 3.4 code path's actual logic is
+  unchanged — the refactor only extracted the shared button-rendering code
+  behind a `state` object so both versions could use it — and this was
+  re-verified live rather than assumed safe from the diff alone.
+
 **2026-08-26 — OJS 3.5.0-5 (official Docker image, MariaDB), live loop.**
 Six real manuscripts — an editorial, a 58-reference review, three research
 articles (two with multi-panel plate figures), a case report — each ran:
@@ -127,25 +179,6 @@ declared now, with `colophonAppliedJobId` and `colophonProductionFileIds`.
 Twelve defects were found and fixed by these verifications — the reason
 they exist. Still open, honestly:
 
-- **The workflow buttons do not appear on OJS 3.5.** Found 2026-08-27 by
-  asking where an editor actually clicks: `injectProductionAction` hooks
-  `TemplateManager::display` and returns early unless the template is
-  `workflow/workflow.tpl`. That template does not exist in 3.5 — the
-  workflow became part of the dashboard SPA, which renders
-  `dashboard/editors.tpl` and carries no `submission` template var — so the
-  hook never fires and no button is inserted. The endpoints themselves are
-  fine: the whole live campaign drove `send`/`start`/`callback` and produced
-  galleys, but through POSTs rather than through a button a person pressed.
-  On 3.4 the buttons do appear, in the workflow header. Making them appear
-  on 3.5 needs the hook to accept the dashboard template, the payload to
-  read the submission id from the request instead of a template var, and
-  colophon.js to find the SPA's submission panel.
-- The same page also carried the 3.4-only CSRF accessor
-  (`getSession()->getCSRFToken()`, which is `BadMethodCallException` on
-  3.5's `Illuminate\Session\Store`); fixed alongside, so the injection is
-  safe on both once it fires. The settings modal was fixed for this on
-  2026-08-26 — the workflow copy was missed, which is what a second call
-  site costs.
 - The firewall-blocked **Check status** path end-to-end.
 - Genres are resolved by registry key (`SUBMISSION`, `IMAGE`); a journal
   that deleted its defaults gets files with no genre — harmless but
