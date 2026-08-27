@@ -127,12 +127,25 @@ declared now, with `colophonAppliedJobId` and `colophonProductionFileIds`.
 Twelve defects were found and fixed by these verifications — the reason
 they exist. Still open, honestly:
 
-- A person clicking the *workflow* buttons in a real browser (the JS
-  inserts into the Vue DOM defensively; the payload and endpoints are
-  verified, pixels are not). The settings modal has now been opened by a
-  person (2026-08-26) — which immediately found two defects the scripted
-  E2E could not: pairing URLs built through the component router (Handler
-  assert), and the 3.4-only CSRF accessor. Both fixed; the list works.
+- **The workflow buttons do not appear on OJS 3.5.** Found 2026-08-27 by
+  asking where an editor actually clicks: `injectProductionAction` hooks
+  `TemplateManager::display` and returns early unless the template is
+  `workflow/workflow.tpl`. That template does not exist in 3.5 — the
+  workflow became part of the dashboard SPA, which renders
+  `dashboard/editors.tpl` and carries no `submission` template var — so the
+  hook never fires and no button is inserted. The endpoints themselves are
+  fine: the whole live campaign drove `send`/`start`/`callback` and produced
+  galleys, but through POSTs rather than through a button a person pressed.
+  On 3.4 the buttons do appear, in the workflow header. Making them appear
+  on 3.5 needs the hook to accept the dashboard template, the payload to
+  read the submission id from the request instead of a template var, and
+  colophon.js to find the SPA's submission panel.
+- The same page also carried the 3.4-only CSRF accessor
+  (`getSession()->getCSRFToken()`, which is `BadMethodCallException` on
+  3.5's `Illuminate\Session\Store`); fixed alongside, so the injection is
+  safe on both once it fires. The settings modal was fixed for this on
+  2026-08-26 — the workflow copy was missed, which is what a second call
+  site costs.
 - The firewall-blocked **Check status** path end-to-end.
 - Genres are resolved by registry key (`SUBMISSION`, `IMAGE`); a journal
   that deleted its defaults gets files with no genre — harmless but

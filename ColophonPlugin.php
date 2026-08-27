@@ -156,7 +156,15 @@ class ColophonPlugin extends GenericPlugin
                 ['submissionId' => $submission->getId()]),
             'statusUrl' => $router->url($request, null, 'colophon', 'status', null,
                 ['submissionId' => $submission->getId()]),
-            'csrfToken' => $request->getSession()->getCSRFToken(),
+            // 3.4's PKP session exposes getCSRFToken(); 3.5's is a Laravel
+            // Illuminate\Session\Store, which has token() and throws
+            // BadMethodCallException for the old name. The settings form was
+            // fixed for this; the workflow injection was not, so opening a
+            // submission's workflow page on 3.5 fataled before any button
+            // could appear — the one page the editor needs.
+            'csrfToken' => method_exists($request->getSession(), 'token')
+                ? $request->getSession()->token()
+                : $request->getSession()->getCSRFToken(),
             'labels' => [
                 'send' => __('plugins.generic.colophon.action.send'),
                 'generate' => __('plugins.generic.colophon.action.generate'),
