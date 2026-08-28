@@ -74,3 +74,18 @@ msgstr "شارژ باقی‌مانده: {$n}"
 
 msgid "plugins.generic.colophon.settings.topUp"
 msgstr "شارژ کنید"
+
+msgid "plugins.generic.colophon.settings.manageLink"
+msgstr "مدیریت مقالات"
+
+msgid "plugins.generic.colophon.manage.title"
+msgstr "مقالات Colophon"
+
+msgid "plugins.generic.colophon.manage.empty"
+msgstr "هنوز هیچ مقاله‌ای به مرحلهٔ ویرایش نرسیده. این فهرست فقط مقالات آماده برای ارسال به Colophon را نشان می‌دهد."
+
+msgid "plugins.generic.colophon.manage.stage"
+msgstr "مرحله"
+
+msgid "plugins.generic.colophon.manage.status"
+msgstr "وضعیت Colophon"

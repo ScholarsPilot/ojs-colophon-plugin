@@ -19,6 +19,9 @@
 	<span id="colophonCredits" style="margin-inline-start:0.75rem"></span>
 	<button type="button" class="pkp_button" id="colophonTopUpBtn" hidden>{translate key="plugins.generic.colophon.settings.topUp"}</button>
 	{/if}
+	<a href="{$colophonManageUrl|escape}" class="pkp_button" style="margin-inline-start:0.75rem">
+		{translate key="plugins.generic.colophon.settings.manageLink"}
+	</a>
 </div>
 <script>
 (function () {ldelim}

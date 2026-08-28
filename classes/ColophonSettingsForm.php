@@ -44,6 +44,12 @@ class ColophonSettingsForm extends Form
             'colophonCreditsOpUrl' => $dispatcher->url(
                 $request, \PKP\core\PKPApplication::ROUTE_PAGE, null, 'colophon', 'credits',
             ),
+            // A plain page link, not a fetch()-then-open op like the ones
+            // above: this is a real page the browser navigates to, not a
+            // JSON action.
+            'colophonManageUrl' => $dispatcher->url(
+                $request, \PKP\core\PKPApplication::ROUTE_PAGE, null, 'colophon', 'submissions',
+            ),
             // 3.4's PKP session exposes getCSRFToken(); 3.5's Laravel
             // session store exposes token(). Same value, different name.
             'colophonCsrfToken' => method_exists($request->getSession(), 'token')

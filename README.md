@@ -35,10 +35,27 @@ Everything it does is visible in this repository.
    you, so no password ever needs to exist. The same block shows the
    journal's **remaining credits** and a **Top up** button that lands,
    signed in, on the credits shop.
+5. **Manage submissions**, in the same settings block, opens the plugin's
+   own page: every submission at Copyediting stage or later, one row each,
+   with Send/Generate and Check status right there. Nothing renders inside
+   any submission's own workflow page — see "How it works" for why.
 
 ## How it works
 
-- **Send to Colophon** (Production stage) uploads the accepted manuscript
+- The editor's entry point is the plugin's own **submissions page**
+  (Settings → Manage submissions), not a button inside each submission's
+  workflow page. An earlier version worked that way; it was replaced
+  2026-08-27 after two problems surfaced from actually using it: OJS 3.5
+  rebuilt the workflow page as a client-side dashboard SPA with no stable
+  per-submission server render to hook, and — independent of that — the
+  button had no stage check at all, so it appeared (and could be clicked)
+  on a submission still awaiting review, before there was an accepted
+  manuscript to send. The submissions page sidesteps both: it is a plain
+  Smarty page extending `layouts/backend.tpl`, the same base every OJS
+  version already uses for its own admin pages, and its one server-side
+  query (`stageId >= WORKFLOW_STAGE_ID_EDITING`) only ever lists submissions
+  that are actually eligible.
+- **Send to Colophon** (Copyediting stage or later) uploads the accepted manuscript
   (FINAL file stage, falling back to the original submission file) to
   `POST /api/v1/articles` — one multipart call that creates the article and
   its issue and starts the run. A JATS `<front>` built from the OJS
@@ -85,7 +102,65 @@ verifier samples at `/api/v1/reference`.
 
 ## Verification record
 
-**2026-08-27 — the OJS 3.5 workflow button, fixed and verified live.** Found
+**2026-08-27, third pass — the workflow-page button replaced with a
+submissions page.** The two entries below fixed the button that injected
+into each submission's own workflow page (`injectProductionAction`,
+`window.colophonData`, `colophon.js`) so it would render on 3.5 and only on
+Copyediting-or-later submissions. That whole mechanism is now removed. The
+owner's objection, raised after seeing the fix demonstrated: an action tied
+to production readiness had no business appearing on every stage of every
+submission a Manager or Sub-editor opens, on a real journal with hundreds of
+papers — and even gated correctly to Copyediting+, it still showed on the
+*history* sub-tabs (Submission, Review) of an already-eligible paper, which
+is not where an editor is deciding to act. Fixing that with more per-tab
+logic on top of an already-fragile per-version template hook was the wrong
+direction; the plugin now owns a page instead of borrowing OJS's.
+`ColophonHandler::submissions()` queries `Repo::submission()->getCollector()
+->filterByStageIds([WORKFLOW_STAGE_ID_EDITING, WORKFLOW_STAGE_ID_PRODUCTION])`
+directly — one comparison, no per-row client-side stage check needed at
+all — and renders a plain table via `templates/submissions.tpl`, reached
+from a **Manage submissions** link in the plugin's own settings modal.
+`{extends file="layouts/backend.tpl"}` is the same base `templates/admin/
+index.tpl` uses for site administration, verified identical on stable-3_4_0
+and stable-3_5_0, so there is no per-OJS-version template to track here the
+way there was for the workflow page.
+
+Three real bugs found by loading the actual page, not by reading the diff:
+`$router->url(..., 'workflow', 'access', $submission->getId())` throws —
+`PKPPageRouter::url()`'s `$path` parameter is `?array`, and a bare int
+fatals the whole request; it needs `[$submission->getId()]`. The page
+rendered with correct data but broken styling and `$` (jQuery) undefined
+until `$this->_isBackendPage = true;` was set before calling
+`setupTemplate()` — a public property on the base `Handler` that
+`TemplateManager::setupBackendPage()` is gated on, easy to miss because nothing
+throws when it is false. And a raw `<script>` block written directly inside
+`submissions.tpl`'s own `{block name="page"}` was present verbatim in the
+server-rendered HTML (confirmed by fetching the page's own response text)
+but never executed in the live DOM (confirmed by `document.scripts` not
+containing it after load) — almost certainly 3.5's Vue-based page hydration
+treating an inline script inside its mounted region as inert content rather
+than something to execute. Moved to an external file loaded through
+`TemplateManager::addJavaScript()` instead — the same mechanism the
+removed per-submission injection used successfully all session on other
+full-page loads — and it executed correctly. That file needed its own
+`document.body` readiness guard for the same reason `colophon.js` did
+before it (see the entry below): loaded in `<head>`, it runs before the
+rows it wires exist, and unlike the removed script this one has no
+retry/observer, so getting that guard wrong would have silently wired
+nothing, permanently, with no error to notice.
+
+Verified live end-to-end on both versions after all three fixes: the page
+renders with full native chrome and correct per-row stage/status data on a
+3.5.0-5 instance with 17 real eligible submissions and on a 3.4.0-8 instance
+whose one real submission is correctly *excluded* (still Submission stage);
+Generate and Check status both round-trip through the real handler with the
+same success/status messages the removed button produced; the settings
+modal's new link resolves to the right URL on both.
+
+**2026-08-27 — the OJS 3.5 workflow button, fixed and verified live**
+(mechanism since replaced by the entry above; kept for the record — the
+underlying facts here, WORKFLOW_STAGE_ID_EDITING and the 3.5 dashboard's
+routing behavior, are still what the current code relies on). Found
 2026-08-27 by asking where an editor actually clicks: `injectProductionAction`
 hooked `TemplateManager::display` and returned early unless the template was
 `workflow/workflow.tpl` — a template that does not exist in 3.5, where the
@@ -136,6 +211,42 @@ isolation:
   unchanged — the refactor only extracted the shared button-rendering code
   behind a `state` object so both versions could use it — and this was
   re-verified live rather than assumed safe from the diff alone.
+
+**2026-08-27, second pass — the button was showing on every stage, not just
+Copyediting onward** (mechanism since replaced by the submissions-page entry
+above; the `stageId >= WORKFLOW_STAGE_ID_EDITING` rule found here is what
+that page's own query now enforces directly). Raised by the owner, not
+found by testing: the fix
+above made the button render correctly, but said nothing about *when* it
+should. `injectProductionAction` had no stage check at all, so opening a
+submission's workflow page showed "Send to Colophon" whether the paper was
+in Submission, Review, Copyediting, or Production — and a real example of
+the resulting risk already existed in this repository's own e2e test data:
+submission 1 on the 3.4.0-8 instance sits at `stageId=1` (Submission, before
+review) yet already carries a `colophonArticleCode` from earlier testing, so
+the button rendered there too. Since `send()` falls back to the raw
+submitted file when no FINAL-stage file exists yet, clicking it that early
+would have sent an unreviewed manuscript. Gated to `stageId >=
+WORKFLOW_STAGE_ID_EDITING` (4, Copyediting) now — server-side on the 3.4
+branch (checked before any payload is built), client-side on the 3.5 branch
+(off the same submission JSON already being fetched for
+`colophonArticleCode`, no extra request). Verified live in both directions
+on both versions: the existing 3.4 submission 1 (stageId 1) now shows
+neither the button nor `window.colophonData` at all; a freshly created 3.5
+test submission (stageId 1, confirmed via five repeated API calls before
+concluding it wasn't a flaky read) is correctly hidden; the existing
+Copyediting-stage submissions on both versions are unaffected. One real
+false alarm during this verification, worth recording: the very first
+retest showed the button rendering anyway, which held even after a
+cmd+shift+r reload — traced to the embedded test browser not honoring that
+shortcut as an actual cache-bypass (`performance.getEntriesByType('resource')`
+on the failing load was never captured to confirm it, but a subsequent clean
+navigation showed a real 4023-byte network transfer, not a 0-byte cache hit,
+and passed correctly) rather than a defect in the gate itself — a reminder
+that this plugin's static assets are cache-busted by the *OJS version*
+(`?v=3.5.0.5`), not by plugin content, so a browser can keep serving an
+editor a stale `colophon.js` after an update until it naturally
+revalidates.
 
 **2026-08-26 — OJS 3.5.0-5 (official Docker image, MariaDB), live loop.**
 Six real manuscripts — an editorial, a 58-reference review, three research

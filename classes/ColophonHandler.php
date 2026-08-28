@@ -18,6 +18,7 @@ namespace APP\plugins\generic\colophon;
 use APP\core\Application;
 use APP\facades\Repo;
 use APP\handler\Handler;
+use APP\template\TemplateManager;
 use PKP\core\JSONMessage;
 use PKP\db\DAORegistry;
 use PKP\plugins\PluginRegistry;
@@ -40,12 +41,13 @@ class ColophonHandler extends Handler
     {
         parent::__construct();
         $this->plugin = PluginRegistry::getPlugin('generic', 'colophonplugin');
-        // send/start/status are editor actions on a submission; the connect ops
-        // are journal-management actions with no submission; callback is
-        // public-by-signature.
+        // send/start/status are editor actions on a submission; submissions
+        // lists them (also editor-level, but no single submission to check
+        // against); the connect ops are journal-management actions with no
+        // submission either; callback is public-by-signature.
         $this->addRoleAssignment(
             [Role::ROLE_ID_MANAGER, Role::ROLE_ID_SUB_EDITOR, Role::ROLE_ID_ASSISTANT],
-            ['send', 'start', 'status']
+            ['send', 'start', 'status', 'submissions']
         );
         $this->addRoleAssignment(
             [Role::ROLE_ID_MANAGER, Role::ROLE_ID_SITE_ADMIN],
@@ -60,7 +62,7 @@ class ColophonHandler extends Handler
         if ($op === 'callback') {
             return true; // authenticated by signature inside the op itself
         }
-        if (in_array($op, ['connectStart', 'connectPoll', 'panel', 'credits'], true)) {
+        if (in_array($op, ['connectStart', 'connectPoll', 'panel', 'credits', 'submissions'], true)) {
             // Journal-level, no submission to authorize against: the canonical
             // context policy bundles the role-based op check with the context.
             $this->addPolicy(new \PKP\security\authorization\ContextAccessPolicy($request, $roleAssignments));
@@ -68,6 +70,96 @@ class ColophonHandler extends Handler
         }
         $this->addPolicy(new SubmissionAccessPolicy($request, $args, $roleAssignments));
         return parent::authorize($request, $args, $roleAssignments);
+    }
+
+    // ----- submissions (the plugin-owned list page) --------------------------
+
+    /**
+     * GET: every submission at Copyediting stage or later, with a Send/
+     * Generate/Check-status action per row. Replaces an earlier design that
+     * injected the same button into each submission's own workflow page —
+     * that approach had no clean way to know a submission's stage on OJS
+     * 3.5's dashboard SPA (see ColophonPlugin.php's file doc for the full
+     * history). This page is a plain Smarty template extending
+     * layouts/backend.tpl, the same base every OJS version already uses for
+     * its own admin pages — verified identical on stable-3_4_0 and
+     * stable-3_5_0 — so there is no per-version template to chase here.
+     */
+    public function submissions(array $args, $request): void
+    {
+        // Handler::_isBackendPage defaults false; setupTemplate() only calls
+        // TemplateManager::setupBackendPage() (jQuery, the pkp.* JS bundle,
+        // the backend stylesheet) when this is true. Without it the page
+        // rendered with the right data but no styling and $ undefined —
+        // found live, not by reading the base class.
+        $this->_isBackendPage = true;
+        $this->setupTemplate($request);
+        $context = $request->getContext();
+        $router = $request->getRouter();
+
+        $submissions = Repo::submission()->getCollector()
+            ->filterByContextIds([$context->getId()])
+            ->filterByStageIds([WORKFLOW_STAGE_ID_EDITING, WORKFLOW_STAGE_ID_PRODUCTION])
+            ->getMany();
+
+        $rows = [];
+        foreach ($submissions as $submission) {
+            $publication = $submission->getCurrentPublication();
+            $rows[] = [
+                'id' => $submission->getId(),
+                'title' => $publication ? $publication->getLocalizedTitle() : '',
+                'stageId' => (int) $submission->getData('stageId'),
+                'articleCode' => (string) $submission->getData('colophonArticleCode'),
+                'lastResult' => (string) $submission->getData('colophonLastResult'),
+                'workflowUrl' => $router->url($request, null, 'workflow', 'access', [$submission->getId()]),
+                'sendUrl' => $router->url($request, null, 'colophon', 'send', null,
+                    ['submissionId' => $submission->getId()]),
+                'startUrl' => $router->url($request, null, 'colophon', 'start', null,
+                    ['submissionId' => $submission->getId()]),
+                'statusUrl' => $router->url($request, null, 'colophon', 'status', null,
+                    ['submissionId' => $submission->getId()]),
+            ];
+        }
+        // Newest first: a freshly-accepted paper is what an editor is most
+        // likely here to act on.
+        usort($rows, fn ($a, $b) => $b['id'] <=> $a['id']);
+
+        $templateMgr = TemplateManager::getManager($request);
+        $templateMgr->assign([
+            'pageTitle' => __('plugins.generic.colophon.manage.title'),
+            'colophonRows' => $rows,
+            'colophonStageLabels' => [
+                WORKFLOW_STAGE_ID_EDITING => __('submission.copyediting'),
+                WORKFLOW_STAGE_ID_PRODUCTION => __('submission.production'),
+            ],
+        ]);
+        // addJavaScript, not a raw <script> tag inside submissions.tpl's own
+        // {block name="page"} — that was present in the server-rendered
+        // HTML but never executed in the live DOM on a real 3.5.0-5 load
+        // (found live, not assumed). This is the same mechanism the earlier
+        // per-submission button injection used successfully all session, on
+        // pages that are also full top-level loads, not modals.
+        $payload = [
+            'csrfToken' => method_exists($request->getSession(), 'token')
+                ? $request->getSession()->token()
+                : $request->getSession()->getCSRFToken(),
+            'labels' => [
+                'send' => __('plugins.generic.colophon.action.send'),
+                'generate' => __('plugins.generic.colophon.action.generate'),
+                'checkStatus' => __('plugins.generic.colophon.action.checkStatus'),
+            ],
+        ];
+        $templateMgr->addJavaScript(
+            'colophonSubmissionsData',
+            'window.colophonSubmissionsData = ' . json_encode($payload) . ';',
+            ['contexts' => 'backend', 'inline' => true]
+        );
+        $templateMgr->addJavaScript(
+            'colophonSubmissions',
+            $request->getBaseUrl() . '/' . $this->plugin->getPluginPath() . '/js/submissions.js',
+            ['contexts' => 'backend']
+        );
+        $templateMgr->display($this->plugin->getTemplateResource('submissions.tpl'));
     }
 
     // ----- connect (device-flow pairing) ------------------------------------

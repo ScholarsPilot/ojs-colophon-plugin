@@ -74,3 +74,18 @@ msgstr "Credits remaining: {$n}"
 
 msgid "plugins.generic.colophon.settings.topUp"
 msgstr "Top up"
+
+msgid "plugins.generic.colophon.settings.manageLink"
+msgstr "Manage submissions"
+
+msgid "plugins.generic.colophon.manage.title"
+msgstr "Colophon submissions"
+
+msgid "plugins.generic.colophon.manage.empty"
+msgstr "No submissions have reached Copyediting yet. This list only shows submissions ready to be sent to Colophon."
+
+msgid "plugins.generic.colophon.manage.stage"
+msgstr "Stage"
+
+msgid "plugins.generic.colophon.manage.status"
+msgstr "Colophon status"

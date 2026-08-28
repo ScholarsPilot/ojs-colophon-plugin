@@ -8,13 +8,29 @@
  * Design, in one paragraph. This plugin adds an explicit action where a JATS
  * galley belongs — the Production stage — and touches nothing upstream: no
  * hook on editorial decisions, no automatic trigger on "accept". An editor
- * presses "Generate JATS with Colophon"; the plugin posts the manuscript to the
- * Colophon API and gets a 202 with a job id; when the job finishes, Colophon
- * POSTs a signed notification to this plugin's callback handler, which
- * verifies the signature, fetches the result over the API, and creates the
- * galley. A "Check status" button polls the same job as a fallback for journal
- * servers whose firewalls block inbound webhooks. An agent drives it; a person
+ * opens the plugin's own submissions page (Website → Plugins → Colophon →
+ * "Manage submissions"), picks an eligible article, and presses "Generate
+ * JATS with Colophon"; the plugin posts the manuscript to the Colophon API
+ * and gets a 202 with a job id; when the job finishes, Colophon POSTs a
+ * signed notification to this plugin's callback handler, which verifies the
+ * signature, fetches the result over the API, and creates the galley. A
+ * "Check status" button polls the same job as a fallback for journal servers
+ * whose firewalls block inbound webhooks. An agent drives it; a person
  * decides.
+ *
+ * The submissions page (ColophonHandler::submissions) replaced an earlier
+ * design that injected this same button directly into each submission's own
+ * workflow page via TemplateManager::display. That approach had no way to
+ * know a submission's stage without hooking a template specific to one OJS
+ * version — 3.4's workflow/workflow.tpl does not exist on 3.5, which
+ * rebuilt the page as a client-side dashboard SPA — and even once patched
+ * to fire on both, it showed the button on every stage of every submission,
+ * including ones still awaiting review, because there was nowhere clean to
+ * gate on stage for the SPA case. A plugin-owned list page sidesteps all of
+ * that: one Smarty template extending the same layouts/backend.tpl every
+ * OJS version already renders admin pages with, and one server-side query
+ * (stageId >= WORKFLOW_STAGE_ID_EDITING) instead of a client-side per-row
+ * check. Owner decision, 2026-08-27.
  *
  * Targets OJS 3.4+ (Repo / Laravel-style APIs). 3.3 LTS uses DAOs and is not
  * supported by this code.
@@ -22,7 +38,6 @@
 
 namespace APP\plugins\generic\colophon;
 
-use APP\core\Application;
 use PKP\core\JSONMessage;
 use PKP\linkAction\LinkAction;
 use PKP\linkAction\request\AjaxModal;
@@ -47,8 +62,6 @@ class ColophonPlugin extends GenericPlugin
         if ($success && $this->getEnabled($mainContextId)) {
             // Route our handlers: /index.php/{journal}/colophon/{op}
             Hook::add('LoadHandler', [$this, 'setupHandler']);
-            // Offer the action in the Production stage's publication galleys grid.
-            Hook::add('TemplateManager::display', [$this, 'injectProductionAction']);
             // Declare our submission properties on the schema. EntityDAO drops
             // any settings row whose name the schema does not declare (verified
             // in stable-3_4_0 EntityDAO::fromRow, and observed live: a stored
@@ -122,109 +135,6 @@ class ColophonPlugin extends GenericPlugin
         require_once($this->getPluginPath() . '/classes/ColophonHandler.php');
         $args[3] = new ColophonHandler();
         return true;
-    }
-
-    /**
-     * Add "Generate JATS with Colophon" to the production stage. Rendered as
-     * a LinkAction so it sits beside the native galley controls rather than
-     * replacing or reordering them.
-     *
-     * Two shapes, verified live against real 3.4.0-8 and 3.5.0-5 instances:
-     *
-     * - 3.4 renders workflow/workflow.tpl once per submission, as a real page
-     *   load, with 'submission' already assigned — a one-shot payload with a
-     *   baked-in id is correct and is untouched below.
-     * - 3.5 replaced that page with dashboard/editors.tpl: PKPWorkflowHandler
-     *   no longer renders anything (it redirects to
-     *   dashboard/editorial?workflowSubmissionId={id}), and editors.tpl is a
-     *   submission-agnostic list with no 'submission' var. Opening or
-     *   switching submissions from there is pure client-side routing — a GET
-     *   to /api/v1/submissions/{id}, no further TemplateManager::display —
-     *   so a baked-in id would go stale the moment the editor clicked a
-     *   different row. This branch ships URL *templates*
-     *   (a __SUBMISSION_ID__ placeholder) instead; colophon.js watches the
-     *   route and substitutes the id itself.
-     */
-    public function injectProductionAction(string $hookName, array $args): bool
-    {
-        $templateMgr = $args[0];
-        $template = $args[1];
-        $isWorkflowTemplate = $template === 'workflow/workflow.tpl';
-        $isDashboardTemplate = $template === 'dashboard/editors.tpl';
-        if (!$isWorkflowTemplate && !$isDashboardTemplate) {
-            return false;
-        }
-        $request = Application::get()->getRequest();
-        $router = $request->getRouter();
-
-        if ($isWorkflowTemplate) {
-            // PKPWorkflowHandler assigns 'submission' before displaying
-            // workflow/workflow.tpl (verified in stable-3_4_0).
-            $submission = $templateMgr->getTemplateVars('submission');
-            if (!$submission) {
-                return false;
-            }
-            $payload = [
-                'submissionId' => $submission->getId(),
-                'hasArticleCode' => (string) $submission->getData('colophonArticleCode') !== '',
-                'sendUrl' => $router->url($request, null, 'colophon', 'send', null,
-                    ['submissionId' => $submission->getId()]),
-                'startUrl' => $router->url($request, null, 'colophon', 'start', null,
-                    ['submissionId' => $submission->getId()]),
-                'statusUrl' => $router->url($request, null, 'colophon', 'status', null,
-                    ['submissionId' => $submission->getId()]),
-            ];
-        } else {
-            $context = $request->getContext();
-            if (!$context) {
-                return false;
-            }
-            // hasArticleCode is deliberately absent here: it is per-submission
-            // state that can change while the editor stays on this one page,
-            // so colophon.js reads it fresh per submission instead — off the
-            // same REST endpoint the dashboard SPA already calls
-            // (/api/v1/submissions/{id}), whose JSON already carries
-            // colophonArticleCode because addToSubmissionSchema() declares it
-            // on the schema the API serializer reads (verified live).
-            $payload = [
-                'submissionId' => null,
-                'apiBase' => $request->getBaseUrl() . '/' . $context->getPath() . '/api/v1',
-                'sendUrl' => $router->url($request, null, 'colophon', 'send', null,
-                    ['submissionId' => '__SUBMISSION_ID__']),
-                'startUrl' => $router->url($request, null, 'colophon', 'start', null,
-                    ['submissionId' => '__SUBMISSION_ID__']),
-                'statusUrl' => $router->url($request, null, 'colophon', 'status', null,
-                    ['submissionId' => '__SUBMISSION_ID__']),
-            ];
-        }
-
-        $payload += [
-            // 3.4's PKP session exposes getCSRFToken(); 3.5's is a Laravel
-            // Illuminate\Session\Store, which has token() and throws
-            // BadMethodCallException for the old name. The settings form was
-            // fixed for this; the workflow injection was not, so opening a
-            // submission's workflow page on 3.5 fataled before any button
-            // could appear — the one page the editor needs.
-            'csrfToken' => method_exists($request->getSession(), 'token')
-                ? $request->getSession()->token()
-                : $request->getSession()->getCSRFToken(),
-            'labels' => [
-                'send' => __('plugins.generic.colophon.action.send'),
-                'generate' => __('plugins.generic.colophon.action.generate'),
-                'checkStatus' => __('plugins.generic.colophon.action.checkStatus'),
-            ],
-        ];
-        $templateMgr->addJavaScript(
-            'colophonData',
-            'window.colophonData = ' . json_encode($payload) . ';',
-            ['contexts' => 'backend', 'inline' => true]
-        );
-        $templateMgr->addJavaScript(
-            'colophon',
-            $request->getBaseUrl() . '/' . $this->getPluginPath() . '/js/colophon.js',
-            ['contexts' => 'backend']
-        );
-        return false;
     }
 
     // ----- Settings -------------------------------------------------------
