@@ -12,6 +12,9 @@ msgstr "Generate a deposit-ready JATS/PMC package for a submission with Colophon
 msgid "plugins.generic.colophon.action.generate"
 msgstr "Generate JATS with Colophon"
 
+msgid "plugins.generic.colophon.action.resend"
+msgstr "Update metadata"
+
 msgid "plugins.generic.colophon.action.checkStatus"
 msgstr "Check status"
 
@@ -89,3 +92,42 @@ msgstr "Stage"
 
 msgid "plugins.generic.colophon.manage.status"
 msgstr "Colophon status"
+
+msgid "plugins.generic.colophon.menu"
+msgstr "Colophon"
+
+msgid "plugins.generic.colophon.action.downloadPackage"
+msgstr "Download package (ZIP)"
+
+msgid "plugins.generic.colophon.action.downloadPdf"
+msgstr "Download PDF"
+
+msgid "plugins.generic.colophon.action.attachGalley"
+msgstr "Attach as galley"
+
+msgid "plugins.generic.colophon.attached"
+msgstr "Galley attached"
+
+msgid "plugins.generic.colophon.error.noPackage"
+msgstr "No finished package for this submission yet. Generate it first, then check status."
+
+msgid "plugins.generic.colophon.error.noPdf"
+msgstr "This package holds no PDF: typesetting was not requested for its issue."
+
+msgid "plugins.generic.colophon.settings.delivery"
+msgstr "Delivery"
+
+msgid "plugins.generic.colophon.settings.deliveryDescription"
+msgstr "How a finished package reaches you. Download writes nothing into OJS: the ZIP and the PDF are offered on the Colophon submissions page, and attaching a galley is a separate button. Galley attaches every finished package automatically."
+
+msgid "plugins.generic.colophon.settings.delivery.download"
+msgstr "Download from the Colophon page (default)"
+
+msgid "plugins.generic.colophon.settings.delivery.galley"
+msgstr "Attach as a JATS galley automatically"
+
+msgid "plugins.generic.colophon.needsReview"
+msgstr "Needs your review"
+
+msgid "plugins.generic.colophon.action.review"
+msgstr "Review on Colophon"

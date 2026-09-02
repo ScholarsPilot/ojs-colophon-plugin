@@ -131,6 +131,9 @@
 			{fbvElement type="text" id="webhookSecret" password=true label="plugins.generic.colophon.settings.webhookSecret"}
 			{if $webhookSecretSet}<p>{translate key="plugins.generic.colophon.settings.secretStored"}</p>{/if}
 		{/fbvFormSection}
+		{fbvFormSection label="plugins.generic.colophon.settings.delivery" description="plugins.generic.colophon.settings.deliveryDescription"}
+			{fbvElement type="select" id="delivery" from=$colophonDeliveryOptions selected=$delivery translate=false}
+		{/fbvFormSection}
 	{/fbvFormArea}
 	{fbvFormButtons submitText="common.save"}
 </form>

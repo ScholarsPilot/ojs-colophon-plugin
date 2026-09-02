@@ -38,11 +38,14 @@
 
 namespace APP\plugins\generic\colophon;
 
+use APP\core\Application;
 use PKP\core\JSONMessage;
 use PKP\linkAction\LinkAction;
 use PKP\linkAction\request\AjaxModal;
 use PKP\plugins\GenericPlugin;
 use PKP\plugins\Hook;
+use PKP\security\Role;
+use APP\template\TemplateManager;
 
 class ColophonPlugin extends GenericPlugin
 {
@@ -54,6 +57,14 @@ class ColophonPlugin extends GenericPlugin
     public const SETTING_PAIRING_CODE = 'colophonPairingCode';
     //: The connected Colophon journal's display name, for the settings page.
     public const SETTING_JOURNAL_NAME = 'colophonJournalName';
+    //: How a finished package reaches the editor. 'download' (the default)
+    //: writes nothing into OJS: the row on the plugin's page offers the ZIP
+    //: and the PDF to download, and "Attach as galley" is an explicit button.
+    //: 'galley' is the earlier behaviour — every finished job replaces the
+    //: plugin's own galley and production-ready files automatically.
+    public const SETTING_DELIVERY = 'colophonDelivery';
+    public const DELIVERY_DOWNLOAD = 'download';
+    public const DELIVERY_GALLEY = 'galley';
 
     /** @copydoc Plugin::register() */
     public function register($category, $path, $mainContextId = null): bool
@@ -67,8 +78,72 @@ class ColophonPlugin extends GenericPlugin
             // in stable-3_4_0 EntityDAO::fromRow, and observed live: a stored
             // colophonJobId loaded back as null until this hook existed).
             Hook::add('Schema::get::submission', [$this, 'addToSubmissionSchema']);
+            // A door in the editorial sidebar, so the page is somewhere a
+            // person can find rather than behind the settings modal.
+            Hook::add('TemplateManager::setupBackendPage', [$this, 'addMenuItem']);
         }
         return $success;
+    }
+
+    /**
+     * Add "Colophon" to the editorial backend's left-hand menu.
+     *
+     * The hook fires *after* PKPTemplateManager::setupBackendPage has called
+     * setState(['menu' => …]) and *before* the state is assigned to the Vue
+     * app, which is the one moment a plugin can read the built menu and hand
+     * back an extended copy (setState array_merges, so the whole 'menu' key is
+     * replaced by ours). Verified against 3.5.0-5's PKPTemplateManager.
+     *
+     * This replaces hooking a template that each OJS version renames: the
+     * plugin owns its page, and this only advertises it.
+     */
+    public function addMenuItem(string $hookName, array $args): bool
+    {
+        $request = Application::get()->getRequest();
+        $context = $request->getContext();
+        if (!$context) {
+            return false;   // Site-level pages have no journal to work in.
+        }
+        // Only the people who may actually run a conversion see the door.
+        $user = $request->getUser();
+        if (!$user) {
+            return false;
+        }
+        $roles = $user->getRoles($context->getId());
+        $allowed = [
+            Role::ROLE_ID_MANAGER,
+            Role::ROLE_ID_SUB_EDITOR,
+            Role::ROLE_ID_ASSISTANT,
+        ];
+        $permitted = false;
+        foreach ($roles as $role) {
+            if (in_array($role->getId(), $allowed, true)) {
+                $permitted = true;
+                break;
+            }
+        }
+        if (!$permitted) {
+            return false;
+        }
+
+        $templateMgr = TemplateManager::getManager($request);
+        $menu = $templateMgr->getState('menu');
+        if (!is_array($menu)) {
+            return false;   // A page that builds no menu is not ours to alter.
+        }
+        $router = $request->getRouter();
+        $menu['colophon'] = [
+            'name' => __('plugins.generic.colophon.menu'),
+            'url' => $request->getDispatcher()->url(
+                $request, \PKP\core\PKPApplication::ROUTE_PAGE, null, 'colophon', 'submissions',
+            ),
+            'isCurrent' => $router->getRequestedPage($request) === 'colophon',
+            // Icons come from OJS's own set; 'Tools' is the closest fit for a
+            // page that does production work on submissions.
+            'icon' => 'Tools',
+        ];
+        $templateMgr->setState(['menu' => $menu]);
+        return false;
     }
 
     public function getDisplayName(): string
@@ -114,6 +189,15 @@ class ColophonPlugin extends GenericPlugin
             'type' => 'integer', 'validation' => ['nullable'],
         ];
         $schema->properties->colophonProductionFileIds = (object) [
+            'type' => 'string', 'validation' => ['nullable'],
+        ];
+        // Whether the last finished job is waiting on a person, and the
+        // Colophon path that clears it — what the row's "Needs your review"
+        // badge and button are drawn from after a page reload.
+        $schema->properties->colophonNeedsPerson = (object) [
+            'type' => 'string', 'validation' => ['nullable'],
+        ];
+        $schema->properties->colophonReviewPath = (object) [
             'type' => 'string', 'validation' => ['nullable'],
         ];
         return Hook::CONTINUE;
@@ -200,5 +284,12 @@ class ColophonPlugin extends GenericPlugin
     public function getWebhookSecret(int $contextId): string
     {
         return (string) $this->getSetting($contextId, self::SETTING_WEBHOOK_SECRET);
+    }
+
+    /** 'download' unless the journal chose 'galley' — the least OJS touched by default. */
+    public function getDelivery(int $contextId): string
+    {
+        $value = (string) $this->getSetting($contextId, self::SETTING_DELIVERY);
+        return $value === self::DELIVERY_GALLEY ? self::DELIVERY_GALLEY : self::DELIVERY_DOWNLOAD;
     }
 }

@@ -30,7 +30,12 @@ Everything it does is visible in this repository.
 3. Alternatively, paste an API key and webhook signing secret minted on
    Colophon's API-keys page (both shown once). The form is write-only: a
    blank field keeps the stored value, and secrets are never echoed back.
-4. Once connected, **Open Colophon panel** in the same settings takes you
+4. A **Colophon** item appears in the editorial sidebar (Manager, Section
+   Editor and Assistant see it). That page lists the submissions that have
+   reached Copyediting or Production with a Send / Generate / Check status
+   button on each — it is where the work is done, and the plugin owns it
+   rather than borrowing a page from OJS.
+5. Once connected, **Open Colophon panel** in the same settings takes you
    into your journal's Colophon workspace signed in — the key vouches for
    you, so no password ever needs to exist. The same block shows the
    journal's **remaining credits** and a **Top up** button that lands,
@@ -72,14 +77,37 @@ Everything it does is visible in this repository.
   (`X-Colophon-Signature`, HMAC-SHA256 of `"{t}.{body}"` under your webhook
   secret; 5-minute replay window). The handler verifies the signature before
   reading anything else, re-fetches the job **over the authenticated API**
-  (it never trusts the notification's own claims), downloads the package
-  from `GET /api/v1/articles/{code}/package`, and creates the JATS galley:
-  the XML as the galley file, every other ZIP member as a dependent file so
-  in-XML hrefs resolve (`fileStage DEPENDENT`, `assocType SUBMISSION_FILE` —
-  the Texture pattern). The XML also lands as a PRODUCTION_READY file.
+  (it never trusts the notification's own claims), and records that a
+  package exists. What happens next is the journal's **Delivery** setting:
+  - **Download** (the default since 2026-09-02): nothing is written into
+    OJS. The row on the submissions page offers **Download package (ZIP)**
+    and **Download PDF** (the typeset PDF member, when the issue was
+    typeset); each click fetches `GET /api/v1/articles/{code}/package`
+    through the plugin — the browser never holds the API key — and streams
+    it back. **Attach as galley** is a separate, explicit button that does
+    the galley work below on demand. The editor downloads and decides.
+  - **Galley**: every finished package is attached automatically — the XML
+    as the galley file, every other ZIP member as a dependent file so
+    in-XML hrefs resolve (`fileStage DEPENDENT`, `assocType
+    SUBMISSION_FILE` — the Texture pattern), and the XML and PDF also as
+    PRODUCTION_READY files. A redelivery replaces the plugin's own earlier
+    galley and files; a galley an editor made by hand is never touched.
 - Deliveries are at-least-once: the handler dedupes on `X-Colophon-Delivery`.
 - **Check status** polls `GET /api/v1/jobs/{id}` and applies a finished job
   the same way — the fallback when inbound webhooks are blocked.
+- **A finished job is not always a package.** A `produce_package` run
+  reports `completed` whether it built the package, stopped where a person
+  is needed, or was refused the build (credits). The job says which:
+  `needs_person`, `blockers` (each one a sentence, with a code), and
+  `review_path`. On `needs_person` the row shows **Needs your review** with
+  the sentence, and — for a journal manager — **Review on Colophon**: the
+  click asks `POST /api/v1/panel-link` for a signed link with `next` set to
+  `review_path`, and opens it. The link is minted on the click, never
+  stored, lives ten minutes, lands on a confirm button (so a link preview
+  cannot spend it), and opens the article's Convert page signed in as the
+  journal owner, where each blocker has its resolver. Such a run is never
+  recorded as a delivery, so the Download buttons keep offering the last
+  package that was actually built.
 
 The API contract lives at `{your server}/api/docs/` and the error catalog +
 verifier samples at `/api/v1/reference`.
@@ -101,6 +129,79 @@ verifier samples at `/api/v1/reference`.
   CSRF-checked.
 
 ## Verification record
+
+**2026-09-02, second pass — "needs your review", with a timed link straight
+to the fix.** The row had one word for three different endings of a run:
+`completed`. Colophon's job payload now carries `needs_person`, `blockers`
+and `review_path` (`publishing/services/agent_background_jobs.job_attention`,
+pinned by `tests_api_job_attention`); the plugin persists them
+(`colophonNeedsPerson`, `colophonReviewPath` — declared on the schema, or
+they would be stripped), shows the badge, and offers **Review on Colophon**
+to managers and site admins (`canOpenPanel`), which mints the panel link
+with `next=review_path`. Verified live on `ijmm`, submission 33: pagination
+blanked on the article → Generate → job 393 stopped at
+`missing_first_and_last_page_or_elocation_id` → Check status: `needsPerson
+true`, the blocker as a sentence, `review_path
+/convert/?journal=7&issue=29&article=184`; the row showed the badge and the
+button; `colophonAppliedJobId` stayed at the last *built* package (392), so
+Download still served that one; the button's panel link opened the confirm
+page, and Continue landed on the article's Convert page signed in as the
+journal owner with the blocker and its resolver ("Save pages and continue")
+on screen. Sandbox note: the panel link is built from the API request's
+host (`host.docker.internal`), which the Mac's browser cannot resolve —
+irrelevant in a real deployment, where the API base is a public name.
+
+**2026-09-02 — the download delivery, verified live on 3.5.0-5.** Owner
+decision: the package should reach the editor as a download by default and
+enter OJS only when asked — the least of OJS touched. Built as a per-journal
+**Delivery** setting (download | galley), a `download` op that proxies the
+package through the plugin (`?member=pdf` streams just the PDF), an
+`attach` op behind an explicit button, and `packageReady` / `galleyAttached`
+on the status reply so the row reveals its buttons the moment a job
+finishes. Verified on the `ijmm` journal (context 3 ↔ Colophon journal 7):
+
+1. **Download package**: 200, `application/zip`, `Content-Disposition:
+   attachment; filename="ijom-20-1-1105.zip"`, 5870 bytes — the recorded
+   package, named after its XML member. A row with no package: 409 with a
+   sentence, shown on the button rather than as a JSON page.
+2. **Download PDF** on a package with no PDF: 404 with the reason (the
+   issue was not typeset). The PDF member path itself was exercised with
+   the real handler method against a real typeset package
+   (`ijp-22-1-3.zip` → `ijp-22-1-3.pdf`, 1,885,979 bytes, `%PDF-` magic) —
+   no OJS-paired journal here has a typeset issue yet.
+3. **A full run on the download delivery**: Generate → job 392 → callback
+   → the row recorded `colophonAppliedJobId=392` and *nothing else changed*
+   — galley 74 and production file 250 exactly as before. (The first
+   attempt reported "7 credits are needed and 5 are available" — a real
+   refusal from Colophon's issue purchase, surfaced verbatim in the row.)
+4. **Attach as galley** on submission 32: galley 75 → 77, production file
+   252 → 260, one "JATS XML" galley on the publication — the replace rule
+   holds through the button too.
+5. **Settings**: the Delivery select renders with its description, a save
+   of `galley` round-trips (re-fetched form shows it selected, DB row
+   `colophonDelivery=galley`), and back to `download`.
+
+Two defects found only by loading the page: OJS's `.pkp_button` sets
+`display` itself, so the `hidden` attribute did nothing and every row showed
+Download buttons before a package existed (now `style.display`); and
+deliveries from before `colophonAppliedJobId` existed recorded only a galley
+id, so their packages — still on Colophon — would have had no button (a
+galley now also counts as proof of a package). Not re-verified on 3.4 this
+round: nothing here is version-specific (`Repo::galley`, `Repo::submissionFile`
+and the page router were already in use on both).
+
+**2026-08-27, fourth pass — the sidebar item, on both supported versions.**
+The plugin's page now has a door in the editorial left-hand menu
+(`TemplateManager::setupBackendPage`, reading the built menu with
+`getState('menu')` and handing back an extended copy). Signed in and clicked
+it on **OJS 3.5.0-5** and on **OJS 3.4.0-8**: the item renders in the sidebar
+on both, marks itself current on its own page (`app__navItem--isCurrent` on
+3.4), and opens the submissions list — populated on 3.5, and correctly
+showing the "nothing has reached Copyediting yet" empty state on the 3.4
+test journal. The one trap: the class is `APP\template\TemplateManager`,
+not `PKP\template\` — with the wrong namespace OJS logs "failed to handle
+the hook" and renders the page perfectly without the item, so the breakage
+is silent.
 
 **2026-08-27, third pass — the workflow-page button replaced with a
 submissions page.** The two entries below fixed the button that injected

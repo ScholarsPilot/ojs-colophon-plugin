@@ -52,6 +52,29 @@ class ColophonClient
         throw new ColophonApiException($status, $data['code'] ?? 'error', $data['message'] ?? $body);
     }
 
+    /**
+     * POST /api/v1/articles/{code}/front — push corrected metadata for an
+     * article that already exists on Colophon.
+     *
+     * Not a second createArticle. Re-sending the manuscript replays the
+     * original idempotency key, so a front corrected after the first send
+     * (a DOI assigned in OJS, a page range typed in, a section changed) came
+     * back as the stale first response instead of reaching the article. This
+     * is the enrich-only door, matched on the code we already hold.
+     */
+    public function pushFront(string $articleCode, string $front, string $idempotencyKey): array
+    {
+        [$status, $body] = $this->request('POST', "/api/v1/articles/{$articleCode}/front", [
+            'Content-Type: application/xml',
+            'Idempotency-Key: ' . $idempotencyKey,
+        ], $front);
+        $data = json_decode($body, true) ?: [];
+        if ($status === 200) {
+            return $data;
+        }
+        throw new ColophonApiException($status, $data['code'] ?? 'error', $data['message'] ?? $body);
+    }
+
     /** GET /api/v1/articles/{code}/package — the ZIP bytes, or throws. */
     public function downloadPackage(string $articleCode): string
     {

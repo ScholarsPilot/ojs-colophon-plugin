@@ -47,7 +47,7 @@ class ColophonHandler extends Handler
         // submission either; callback is public-by-signature.
         $this->addRoleAssignment(
             [Role::ROLE_ID_MANAGER, Role::ROLE_ID_SUB_EDITOR, Role::ROLE_ID_ASSISTANT],
-            ['send', 'start', 'status', 'submissions']
+            ['send', 'resend', 'start', 'status', 'submissions', 'download', 'attach']
         );
         $this->addRoleAssignment(
             [Role::ROLE_ID_MANAGER, Role::ROLE_ID_SITE_ADMIN],
@@ -102,6 +102,7 @@ class ColophonHandler extends Handler
             ->filterByStageIds([WORKFLOW_STAGE_ID_EDITING, WORKFLOW_STAGE_ID_PRODUCTION])
             ->getMany();
 
+        $delivery = $this->plugin->getDelivery($context->getId());
         $rows = [];
         foreach ($submissions as $submission) {
             $publication = $submission->getCurrentPublication();
@@ -111,8 +112,22 @@ class ColophonHandler extends Handler
                 'stageId' => (int) $submission->getData('stageId'),
                 'articleCode' => (string) $submission->getData('colophonArticleCode'),
                 'lastResult' => (string) $submission->getData('colophonLastResult'),
+                // A finished package is downloadable from the moment a job
+                // completed; the galley id says whether one was also attached.
+                'hasPackage' => $this->hasPackage($submission),
+                'hasGalley' => (int) $submission->getData('colophonGalleyId') > 0,
+                'needsPerson' => (string) $submission->getData('colophonNeedsPerson') === '1',
+                'reviewPath' => (string) $submission->getData('colophonReviewPath'),
                 'workflowUrl' => $router->url($request, null, 'workflow', 'access', [$submission->getId()]),
+                'downloadUrl' => $router->url($request, null, 'colophon', 'download', null,
+                    ['submissionId' => $submission->getId()]),
+                'downloadPdfUrl' => $router->url($request, null, 'colophon', 'download', null,
+                    ['submissionId' => $submission->getId(), 'member' => 'pdf']),
+                'attachUrl' => $router->url($request, null, 'colophon', 'attach', null,
+                    ['submissionId' => $submission->getId()]),
                 'sendUrl' => $router->url($request, null, 'colophon', 'send', null,
+                    ['submissionId' => $submission->getId()]),
+                'resendUrl' => $router->url($request, null, 'colophon', 'resend', null,
                     ['submissionId' => $submission->getId()]),
                 'startUrl' => $router->url($request, null, 'colophon', 'start', null,
                     ['submissionId' => $submission->getId()]),
@@ -128,6 +143,12 @@ class ColophonHandler extends Handler
         $templateMgr->assign([
             'pageTitle' => __('plugins.generic.colophon.manage.title'),
             'colophonRows' => $rows,
+            'colophonDelivery' => $delivery,
+            // The review button opens Colophon signed in as the journal
+            // owner (the panel op), so only the people allowed that door
+            // get the button; everyone else still sees the badge and the
+            // sentence.
+            'colophonCanReview' => $this->canOpenPanel($request),
             'colophonStageLabels' => [
                 WORKFLOW_STAGE_ID_EDITING => __('submission.copyediting'),
                 WORKFLOW_STAGE_ID_PRODUCTION => __('submission.production'),
@@ -146,8 +167,18 @@ class ColophonHandler extends Handler
             'labels' => [
                 'send' => __('plugins.generic.colophon.action.send'),
                 'generate' => __('plugins.generic.colophon.action.generate'),
+                'resend' => __('plugins.generic.colophon.action.resend'),
                 'checkStatus' => __('plugins.generic.colophon.action.checkStatus'),
+                'downloadPackage' => __('plugins.generic.colophon.action.downloadPackage'),
+                'downloadPdf' => __('plugins.generic.colophon.action.downloadPdf'),
+                'attachGalley' => __('plugins.generic.colophon.action.attachGalley'),
+                'attached' => __('plugins.generic.colophon.attached'),
+                'needsReview' => __('plugins.generic.colophon.needsReview'),
+                'review' => __('plugins.generic.colophon.action.review'),
             ],
+            'delivery' => $delivery,
+            'canReview' => $this->canOpenPanel($request),
+            'panelUrl' => $router->url($request, null, 'colophon', 'panel'),
         ];
         $templateMgr->addJavaScript(
             'colophonSubmissionsData',
@@ -516,6 +547,55 @@ class ColophonHandler extends Handler
      * submission + the manuscript file's revision, so a double-click or a retried
      * request cannot start two jobs for the same manuscript.
      */
+    /**
+     * POST: push this submission's current metadata to an article that already
+     * exists on Colophon, without re-uploading the manuscript.
+     *
+     * OJS stays authoritative for the DOI, the section, the licence and the
+     * page range, and all four are routinely filled in *after* the manuscript
+     * is first sent. Before this existed the run said "assign the DOI there
+     * and send the article again" and the page offered no way to do it — the
+     * row's one button had already become Produce — while a re-send would have
+     * replayed the first send's idempotency key and returned the stale
+     * response rather than the corrected front.
+     */
+    public function resend(array $args, $request): JSONMessage
+    {
+        if (!$request->checkCSRF()) {
+            return new JSONMessage(false, __('form.csrfInvalid'));
+        }
+        $context = $request->getContext();
+        $submission = $this->getAuthorizedContextObject(Application::ASSOC_TYPE_SUBMISSION);
+        if (!$submission) {
+            return new JSONMessage(false, __('plugins.generic.colophon.error.noSubmission'));
+        }
+        $apiKey = $this->plugin->getApiKey($context->getId());
+        if ($apiKey === '') {
+            return new JSONMessage(false, __('plugins.generic.colophon.error.notConfigured'));
+        }
+        $articleCode = (string) $submission->getData('colophonArticleCode');
+        if ($articleCode === '') {
+            return new JSONMessage(false, __('plugins.generic.colophon.error.noArticleCode'));
+        }
+
+        $meta = $this->collectFrontMeta($request, $submission);
+        require_once(dirname(__DIR__) . '/classes/ColophonFrontXml.php');
+        $front = ColophonFrontXml::build($meta);
+
+        // Keyed on the front itself: pressing the button twice on unchanged
+        // metadata replays one write, while a genuinely corrected front is a
+        // new key and actually lands.
+        $idempotencyKey = sprintf('ojs-front-%d-%s', $submission->getId(), substr(sha1($front), 0, 16));
+
+        $client = new ColophonClient($this->plugin->getApiBase($context->getId()), $apiKey);
+        try {
+            $client->pushFront($articleCode, $front, $idempotencyKey);
+        } catch (ColophonApiException $e) {
+            return new JSONMessage(false, __('plugins.generic.colophon.error.api', ['message' => $e->getMessage()]));
+        }
+        return new JSONMessage(true, ['articleCode' => $articleCode]);
+    }
+
     public function start(array $args, $request): JSONMessage
     {
         if (!$request->checkCSRF()) {
@@ -646,20 +726,183 @@ class ColophonHandler extends Handler
         } catch (ColophonApiException $e) {
             return new JSONMessage(false, $e->getMessage());
         }
-        if (in_array($job['status'] ?? '', ['completed', 'failed'], true)
-            && (int) $submission->getData('colophonAppliedJobId') !== $jobId) {
+        $finished = in_array($job['status'] ?? '', ['completed', 'failed'], true);
+        if ($finished && (int) $submission->getData('colophonAppliedJobId') !== $jobId) {
             try {
                 $this->applyFinishedJob($submission, $jobId, $job);
             } catch (\Throwable $e) {
                 return new JSONMessage(false, $e->getMessage());
             }
+        } elseif ($finished) {
+            // Already applied; the attention state can still move (a person
+            // cleared the blocker on Colophon, or a later refusal landed).
+            $this->rememberAttention($submission, $job);
         }
         return new JSONMessage(true, [
             'status' => $job['status'] ?? 'unknown',
             'phase' => $job['phase'] ?? '',
             'progress' => $job['progress'] ?? null,
             'result_message' => $job['result_message'] ?? '',
+            'packageReady' => $this->hasPackage($submission),
+            'galleyAttached' => (int) $submission->getData('colophonGalleyId') > 0,
+            'needsPerson' => !empty($job['needs_person']),
+            'blockers' => $job['blockers'] ?? [],
+            'reviewPath' => (string) ($job['review_path'] ?? ''),
         ]);
+    }
+
+    // ----- download (the package, out of OJS's way) ---------------------------
+
+    /**
+     * GET: hand the editor the finished package — the whole ZIP, or with
+     * `member=pdf` just the typeset PDF inside it. Fetched from Colophon over
+     * the authenticated API on each click (the browser never holds the key)
+     * and streamed straight back; nothing is written into OJS. This is the
+     * default delivery: the editor downloads and decides what to do with it.
+     */
+    public function download(array $args, $request): void
+    {
+        $context = $request->getContext();
+        $submission = $this->getAuthorizedContextObject(Application::ASSOC_TYPE_SUBMISSION);
+        if (!$submission) {
+            $this->respond(404, ['error' => __('plugins.generic.colophon.error.noSubmission')]);
+            return;
+        }
+        $apiKey = $this->plugin->getApiKey($context->getId());
+        $code = (string) $submission->getData('colophonArticleCode');
+        if ($apiKey === '' || $code === '') {
+            $this->respond(409, ['error' => __('plugins.generic.colophon.error.noPackage')]);
+            return;
+        }
+        if (!$this->hasPackage($submission)) {
+            $this->respond(409, ['error' => __('plugins.generic.colophon.error.noPackage')]);
+            return;
+        }
+        $client = new ColophonClient($this->plugin->getApiBase($context->getId()), $apiKey);
+        try {
+            $packageBytes = $client->downloadPackage($code);
+        } catch (ColophonApiException $e) {
+            $this->respond($e->httpStatus >= 400 ? $e->httpStatus : 502,
+                ['error' => __('plugins.generic.colophon.error.api', ['message' => $e->getMessage()])]);
+            return;
+        }
+
+        $member = (string) $request->getUserVar('member');
+        if ($member === 'pdf') {
+            $pdf = $this->zipMember($packageBytes, '/\.pdf$/i');
+            if ($pdf === null) {
+                $this->respond(404, ['error' => __('plugins.generic.colophon.error.noPdf')]);
+                return;
+            }
+            $this->stream($pdf[1], 'application/pdf', basename($pdf[0]));
+            return;
+        }
+        // Named after the XML member (jots-21-3-101.xml → jots-21-3-101.zip),
+        // the same name the package carries on Colophon's own download.
+        $xml = $this->zipMember($packageBytes, '/\.xml$/i');
+        $name = $xml ? preg_replace('/\.xml$/i', '', basename($xml[0])) . '.zip' : 'colophon-' . $code . '.zip';
+        $this->stream($packageBytes, 'application/zip', $name);
+    }
+
+    /**
+     * POST: attach the finished package as the JATS galley (plus the XML and
+     * PDF as production-ready files) — the explicit door, for a journal on
+     * the download delivery. Same work the galley delivery does on its own.
+     */
+    public function attach(array $args, $request): JSONMessage
+    {
+        if (!$request->checkCSRF()) {
+            return new JSONMessage(false, __('form.csrfInvalid'));
+        }
+        $submission = $this->getAuthorizedContextObject(Application::ASSOC_TYPE_SUBMISSION);
+        if (!$submission) {
+            return new JSONMessage(false, __('plugins.generic.colophon.error.noSubmission'));
+        }
+        if ((string) $submission->getData('colophonArticleCode') === '' || !$this->hasPackage($submission)) {
+            return new JSONMessage(false, __('plugins.generic.colophon.error.noPackage'));
+        }
+        try {
+            $galleyId = $this->attachPackage($submission);
+        } catch (ColophonApiException $e) {
+            return new JSONMessage(false, __('plugins.generic.colophon.error.api', ['message' => $e->getMessage()]));
+        } catch (\Throwable $e) {
+            return new JSONMessage(false, $e->getMessage());
+        }
+        return new JSONMessage(true, ['galleyId' => $galleyId, 'message' => __('plugins.generic.colophon.attached')]);
+    }
+
+    /**
+     * Record whether the finished job is waiting on a person, and where. Read
+     * from the job payload's own words (needs_person, review_path) — the
+     * plugin does not re-derive them from status, which is the mistake this
+     * exists to end. Persisted so the row shows it after a reload, not only
+     * in the one response Check status got.
+     */
+    private function rememberAttention($submission, array $job): void
+    {
+        $needs = !empty($job['needs_person']);
+        $submission->setData('colophonNeedsPerson', $needs ? '1' : '');
+        $submission->setData('colophonReviewPath', $needs ? (string) ($job['review_path'] ?? '') : '');
+    }
+
+    /** May this person open Colophon through the signed panel door? */
+    private function canOpenPanel($request): bool
+    {
+        $user = $request->getUser();
+        $context = $request->getContext();
+        if (!$user || !$context) {
+            return false;
+        }
+        if (\PKP\security\Validation::isSiteAdmin()) {
+            return true;
+        }
+        return (bool) $user->hasRole([Role::ROLE_ID_MANAGER], (int) $context->getId());
+    }
+
+    /**
+     * Whether Colophon holds a finished package for this submission. A
+     * recorded applied job says so; so does a galley this plugin attached —
+     * deliveries from before colophonAppliedJobId existed recorded only the
+     * galley, and their packages are still there to download.
+     */
+    private function hasPackage($submission): bool
+    {
+        return (int) $submission->getData('colophonAppliedJobId') > 0
+            || (int) $submission->getData('colophonGalleyId') > 0;
+    }
+
+    /** The first ZIP member whose name matches, as [name, bytes], or null. */
+    private function zipMember(string $packageBytes, string $pattern): ?array
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'colophon-dl');
+        file_put_contents($tmp, $packageBytes);
+        $zip = new \ZipArchive();
+        if ($zip->open($tmp) !== true) {
+            @unlink($tmp);
+            return null;
+        }
+        $found = null;
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $name = $zip->getNameIndex($i);
+            if (preg_match($pattern, $name) === 1) {
+                $found = [$name, (string) $zip->getFromIndex($i)];
+                break;
+            }
+        }
+        $zip->close();
+        @unlink($tmp);
+        return $found;
+    }
+
+    private function stream(string $bytes, string $contentType, string $filename): void
+    {
+        $safe = preg_replace('/[^A-Za-z0-9._-]+/', '_', $filename) ?: 'download';
+        http_response_code(200);
+        header('Content-Type: ' . $contentType);
+        header('Content-Disposition: attachment; filename="' . $safe . '"');
+        header('Content-Length: ' . strlen($bytes));
+        header('X-Content-Type-Options: nosniff');
+        echo $bytes;
     }
 
     // ----- shared -----------------------------------------------------------
@@ -673,33 +916,65 @@ class ColophonHandler extends Handler
         $contextId = $submission->getData('contextId');
         $client = new ColophonClient($this->plugin->getApiBase($contextId), $this->plugin->getApiKey($contextId));
         $job = $job ?: $client->getJob($jobId);
+        $this->rememberAttention($submission, $job);
         if (($job['status'] ?? '') !== 'completed') {
             // A failed job is recorded, not attached: the editor sees the message.
             $submission->setData('colophonLastResult', $job['error_message'] ?? $job['result_message'] ?? 'failed');
             Repo::submission()->edit($submission, []);
             return;
         }
-        // Package download: the result_url is the job; the package itself is the
-        // article's final package endpoint. This fetch is where the ZIP comes from.
-        $packageBytes = $this->downloadPackage($submission, $job);
-        // Delivery lands twice, by decision ت۴ of the approved plan: the XML
-        // and PDF members as PRODUCTION_READY files (the editor's working
-        // copies in the Production stage) and the whole package as a JATS
-        // galley with dependent members (what publishes).
-        // A re-produce (copy edits accepted, a figure replaced) delivers a NEW
-        // package for the same submission. Stacking another galley next to the
-        // old one showed readers "JATS XML" three times (found live: submission
-        // 32 held three after the copy-editing rerun), so the plugin replaces
-        // what it created before it adds. Only its own recorded ids are
-        // touched: a galley an editor made by hand is never deleted here.
+        // "completed" is the run, not the package: a run that stopped at a
+        // blocker, or was refused the build, completes too. Only a run that
+        // built its package is a delivery — the earlier version recorded a
+        // blocked run as applied and offered its stale package to download.
+        // The job says so itself (needs_person); a server too old to say it
+        // is treated as before.
+        if (!empty($job['needs_person'])) {
+            $submission->setData('colophonLastResult', $job['result_message'] ?? '');
+            Repo::submission()->edit($submission, []);
+            return;
+        }
+        // The job is recorded as finished before anything is written into OJS:
+        // on the download delivery this is the whole of it — the row's
+        // Download buttons read colophonAppliedJobId — and on the galley
+        // delivery the attach below can fail (a 5xx tells Colophon to retry)
+        // without losing the fact that the package exists.
+        $submission->setData('colophonAppliedJobId', $jobId);
+        $submission->setData('colophonLastResult', $job['result_message'] ?? 'completed');
+        Repo::submission()->edit($submission, []);
+        if ($this->plugin->getDelivery((int) $contextId) === ColophonPlugin::DELIVERY_GALLEY) {
+            $this->attachPackage($submission);
+        }
+    }
+
+    /**
+     * Fetch the recorded package and attach it: the XML and PDF members as
+     * PRODUCTION_READY files (the editor's working copies in the Production
+     * stage) and the whole package as a JATS galley with dependent members
+     * (what publishes). Delivery lands twice by decision ت۴ of the approved
+     * plan. Called automatically on the galley delivery, and by the explicit
+     * "Attach as galley" button on the download delivery.
+     *
+     * A re-produce (copy edits accepted, a figure replaced) delivers a NEW
+     * package for the same submission. Stacking another galley next to the
+     * old one showed readers "JATS XML" three times (found live: submission
+     * 32 held three after the copy-editing rerun), so the plugin replaces
+     * what it created before it adds. Only its own recorded ids are touched:
+     * a galley an editor made by hand is never deleted here.
+     */
+    private function attachPackage($submission): int
+    {
+        // The package itself is the article's final package endpoint — the
+        // result_url of the job only says it finished. This fetch is where
+        // the ZIP comes from.
+        $packageBytes = $this->downloadPackage($submission, []);
         $this->removePreviousDelivery($submission);
         $productionFileIds = $this->addProductionReadyFiles($submission, $packageBytes);
         $galleyId = $this->createJatsGalley($submission, $packageBytes);
         $submission->setData('colophonGalleyId', $galleyId);
         $submission->setData('colophonProductionFileIds', implode(',', $productionFileIds));
-        $submission->setData('colophonAppliedJobId', $jobId);
-        $submission->setData('colophonLastResult', $job['result_message'] ?? 'completed');
         Repo::submission()->edit($submission, []);
+        return $galleyId;
     }
 
     private function downloadPackage($submission, array $job): string

@@ -12,6 +12,9 @@ msgstr "با کولوفون برای این مقاله بستهٔ آمادهٔ �
 msgid "plugins.generic.colophon.action.generate"
 msgstr "ساخت JATS با کولوفون"
 
+msgid "plugins.generic.colophon.action.resend"
+msgstr "به‌روزرسانی فراداده"
+
 msgid "plugins.generic.colophon.action.checkStatus"
 msgstr "بررسی وضعیت"
 
@@ -89,3 +92,42 @@ msgstr "مرحله"
 
 msgid "plugins.generic.colophon.manage.status"
 msgstr "وضعیت Colophon"
+
+msgid "plugins.generic.colophon.menu"
+msgstr "کولوفون"
+
+msgid "plugins.generic.colophon.action.downloadPackage"
+msgstr "دانلود بسته (ZIP)"
+
+msgid "plugins.generic.colophon.action.downloadPdf"
+msgstr "دانلود PDF"
+
+msgid "plugins.generic.colophon.action.attachGalley"
+msgstr "افزودن به‌عنوان galley"
+
+msgid "plugins.generic.colophon.attached"
+msgstr "galley افزوده شد"
+
+msgid "plugins.generic.colophon.error.noPackage"
+msgstr "هنوز بستهٔ نهایی برای این مقاله ساخته نشده. اول Generate را بزنید و بعد وضعیت را بررسی کنید."
+
+msgid "plugins.generic.colophon.error.noPdf"
+msgstr "این بسته PDF ندارد: برای این شماره صفحه‌آرایی درخواست نشده بود."
+
+msgid "plugins.generic.colophon.settings.delivery"
+msgstr "نحوهٔ تحویل"
+
+msgid "plugins.generic.colophon.settings.deliveryDescription"
+msgstr "بستهٔ نهایی چطور به دست شما برسد. «دانلود» چیزی داخل OJS نمی‌نویسد: ZIP و PDF در صفحهٔ مقالات Colophon برای دانلود ارائه می‌شوند و افزودن galley یک دکمهٔ جداگانه است. «galley» هر بستهٔ نهایی را خودکار اضافه می‌کند."
+
+msgid "plugins.generic.colophon.settings.delivery.download"
+msgstr "دانلود از صفحهٔ Colophon (پیش‌فرض)"
+
+msgid "plugins.generic.colophon.settings.delivery.galley"
+msgstr "افزودن خودکار به‌عنوان galley جتس"
+
+msgid "plugins.generic.colophon.needsReview"
+msgstr "نیاز به بررسی شما"
+
+msgid "plugins.generic.colophon.action.review"
+msgstr "بررسی در Colophon"

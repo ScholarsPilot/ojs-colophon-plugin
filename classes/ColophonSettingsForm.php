@@ -58,6 +58,10 @@ class ColophonSettingsForm extends Form
             'colophonJournalName' => (string) $this->plugin->getSetting(
                 $this->contextId, ColophonPlugin::SETTING_JOURNAL_NAME,
             ),
+            'colophonDeliveryOptions' => [
+                ColophonPlugin::DELIVERY_DOWNLOAD => __('plugins.generic.colophon.settings.delivery.download'),
+                ColophonPlugin::DELIVERY_GALLEY => __('plugins.generic.colophon.settings.delivery.galley'),
+            ],
         ]);
         return parent::fetch($request, $template, $display);
     }
@@ -78,6 +82,7 @@ class ColophonSettingsForm extends Form
     public function initData(): void
     {
         $this->setData('apiBase', $this->plugin->getApiBase($this->contextId));
+        $this->setData('delivery', $this->plugin->getDelivery($this->contextId));
         // Never round-trip the secrets into the form; show a masked marker so
         // the operator can see something is configured without re-exposing it.
         $this->setData('apiKeySet', $this->plugin->getApiKey($this->contextId) !== '');
@@ -86,12 +91,18 @@ class ColophonSettingsForm extends Form
 
     public function readInputData(): void
     {
-        $this->readUserVars(['apiBase', 'apiKey', 'webhookSecret']);
+        $this->readUserVars(['apiBase', 'apiKey', 'webhookSecret', 'delivery']);
     }
 
     public function execute(...$functionArgs)
     {
         $this->plugin->updateSetting($this->contextId, ColophonPlugin::SETTING_API_BASE, trim((string) $this->getData('apiBase')));
+        // Anything but the explicit galley choice is the default: a form
+        // value nobody typed cannot switch the journal into writing galleys.
+        $delivery = (string) $this->getData('delivery') === ColophonPlugin::DELIVERY_GALLEY
+            ? ColophonPlugin::DELIVERY_GALLEY
+            : ColophonPlugin::DELIVERY_DOWNLOAD;
+        $this->plugin->updateSetting($this->contextId, ColophonPlugin::SETTING_DELIVERY, $delivery);
         // Blank means "keep the stored one": the form never shows the secret, so
         // an untouched field must not erase it.
         foreach ([ColophonPlugin::SETTING_API_KEY => 'apiKey',
